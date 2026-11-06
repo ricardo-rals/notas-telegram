@@ -1,0 +1,22 @@
+{
+ "name": "Caderno (inventado)",
+ "type": "private_supergroup",
+ "id": 9999999999,
+ "messages": [
+  {
+   "id": 130,
+   "type": "message",
+   "date": "2025-11-05T07:00:00",
+   "date_unixtime": "1762336930",
+   "from": "Dono",
+   "from_id": "user111",
+   "text": "x",
+   "text_entities": [
+    {
+     "type": "plain",
+     "text": "x"
+    }
+   ]
+  }
+ ]
+}

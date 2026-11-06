@@ -1,0 +1,23 @@
+{
+ "message_id": 3,
+ "date": 1762336803,
+ "chat": {
+  "id": -1001234567890,
+  "type": "supergroup",
+  "title": "Caderno (inventado)"
+ },
+ "from": {
+  "id": 111,
+  "is_bot": false,
+  "first_name": "Dono"
+ },
+ "text": "veja aqui",
+ "entities": [
+  {
+   "type": "text_link",
+   "offset": 5,
+   "length": 4,
+   "url": "https://exemplo.com/x"
+  }
+ ]
+}

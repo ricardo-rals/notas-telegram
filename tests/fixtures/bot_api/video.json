@@ -1,0 +1,24 @@
+{
+ "message_id": 7,
+ "date": 1762336807,
+ "chat": {
+  "id": -1001234567890,
+  "type": "supergroup",
+  "title": "Caderno (inventado)"
+ },
+ "from": {
+  "id": 111,
+  "is_bot": false,
+  "first_name": "Dono"
+ },
+ "video": {
+  "file_id": "VID1",
+  "file_unique_id": "vid1",
+  "file_size": 5000000,
+  "mime_type": "video/mp4",
+  "duration": 10,
+  "width": 1,
+  "height": 1
+ },
+ "caption": "vídeo curto"
+}

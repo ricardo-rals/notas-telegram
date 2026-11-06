@@ -1,0 +1,33 @@
+# Segredos e dados (Princípio IV)
+.env
+data/
+*.db
+*.db-wal
+*.db-shm
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+*.egg-info/
+dist/
+.pytest_cache/
+
+# Sistema
+Thumbs.db
+.DS_Store
+.vscode/
+.idea/
+
+# Variações locais do .env e exportações reais do Telegram (Princípio IV)
+.env.*
+!.env.example
+ChatExport_*/
+*.sqlite
+*.sqlite3
+
+# Config local do Claude Code
+.claude/settings.local.json
+
+# Cache de catálogo do Spec Kit
+.specify/extensions/.cache/

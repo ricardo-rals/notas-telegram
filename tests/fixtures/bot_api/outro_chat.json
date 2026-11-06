@@ -1,0 +1,15 @@
+{
+ "message_id": 901,
+ "date": 1762336801,
+ "chat": {
+  "id": -1009999999999,
+  "type": "supergroup",
+  "title": "Outro grupo"
+ },
+ "from": {
+  "id": 111,
+  "is_bot": false,
+  "first_name": "Dono"
+ },
+ "text": "comprar pão"
+}

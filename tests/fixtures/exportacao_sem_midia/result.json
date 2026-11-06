@@ -1,0 +1,25 @@
+{
+ "name": "Caderno (inventado)",
+ "type": "private_supergroup",
+ "id": 1234567890,
+ "messages": [
+  {
+   "id": 120,
+   "type": "message",
+   "date": "2025-11-05T07:00:00",
+   "date_unixtime": "1762336920",
+   "from": "Dono",
+   "from_id": "user111",
+   "text": "foto sem arquivo",
+   "text_entities": [
+    {
+     "type": "plain",
+     "text": "foto sem arquivo"
+    }
+   ],
+   "photo": "(File not included. Change data exporting settings to download.)",
+   "width": 1,
+   "height": 1
+  }
+ ]
+}

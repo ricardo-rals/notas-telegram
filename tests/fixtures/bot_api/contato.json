@@ -1,0 +1,19 @@
+{
+ "message_id": 16,
+ "date": 1762336816,
+ "chat": {
+  "id": -1001234567890,
+  "type": "supergroup",
+  "title": "Caderno (inventado)"
+ },
+ "from": {
+  "id": 111,
+  "is_bot": false,
+  "first_name": "Dono"
+ },
+ "contact": {
+  "first_name": "Fulano",
+  "last_name": "de Tal",
+  "phone_number": "+5511999990000"
+ }
+}

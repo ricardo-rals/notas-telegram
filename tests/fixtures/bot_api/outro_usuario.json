@@ -1,0 +1,15 @@
+{
+ "message_id": 900,
+ "date": 1762336801,
+ "chat": {
+  "id": -1001234567890,
+  "type": "supergroup",
+  "title": "Caderno (inventado)"
+ },
+ "from": {
+  "id": 222,
+  "is_bot": false,
+  "first_name": "Outra pessoa"
+ },
+ "text": "comprar pão"
+}

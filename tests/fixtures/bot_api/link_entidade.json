@@ -1,0 +1,22 @@
+{
+ "message_id": 2,
+ "date": 1762336802,
+ "chat": {
+  "id": -1001234567890,
+  "type": "supergroup",
+  "title": "Caderno (inventado)"
+ },
+ "from": {
+  "id": 111,
+  "is_bot": false,
+  "first_name": "Dono"
+ },
+ "text": "olha isso https://exemplo.com",
+ "entities": [
+  {
+   "type": "url",
+   "offset": 10,
+   "length": 19
+  }
+ ]
+}

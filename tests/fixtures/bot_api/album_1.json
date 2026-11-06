@@ -1,0 +1,39 @@
+{
+ "message_id": 17,
+ "date": 1762336817,
+ "chat": {
+  "id": -1001234567890,
+  "type": "supergroup",
+  "title": "Caderno (inventado)"
+ },
+ "from": {
+  "id": 111,
+  "is_bot": false,
+  "first_name": "Dono"
+ },
+ "photo": [
+  {
+   "file_id": "FALB1_s",
+   "file_unique_id": "ALB1s",
+   "file_size": 1000,
+   "width": 90,
+   "height": 90
+  },
+  {
+   "file_id": "FALB1_m",
+   "file_unique_id": "ALB1m",
+   "file_size": 50000,
+   "width": 320,
+   "height": 320
+  },
+  {
+   "file_id": "FALB1_l",
+   "file_unique_id": "ALB1",
+   "file_size": 200000,
+   "width": 1280,
+   "height": 1280
+  }
+ ],
+ "media_group_id": "G1",
+ "caption": "viagem"
+}

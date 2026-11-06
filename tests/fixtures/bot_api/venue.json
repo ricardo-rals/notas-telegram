@@ -1,0 +1,26 @@
+{
+ "message_id": 15,
+ "date": 1762336815,
+ "chat": {
+  "id": -1001234567890,
+  "type": "supergroup",
+  "title": "Caderno (inventado)"
+ },
+ "from": {
+  "id": 111,
+  "is_bot": false,
+  "first_name": "Dono"
+ },
+ "venue": {
+  "location": {
+   "latitude": -22.9068,
+   "longitude": -43.1729
+  },
+  "title": "Lugar",
+  "address": "Rua X"
+ },
+ "location": {
+  "latitude": -22.9068,
+  "longitude": -43.1729
+ }
+}

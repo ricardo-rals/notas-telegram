@@ -1,0 +1,11 @@
+{% if aviso %}<p class="erro">{{ aviso }}</p>{% endif %}
+{% if imp %}
+<div {% if imp.status == 'rodando' %}hx-get="/importar/status" hx-trigger="every 2s" hx-target="#status"{% endif %}>
+  <p>Importação de <code>{{ imp.pasta }}</code> ({{ imp.via }}):
+    <strong>{{ {'rodando': 'rodando…', 'concluida': 'concluída', 'falha': 'falhou'}[imp.status] }}</strong></p>
+  {% if imp.status != 'rodando' %}
+  <p>criadas: {{ imp.criadas }} · já existentes: {{ imp.existentes }} · ignoradas: {{ imp.ignoradas }} · falhas: {{ imp.falhas }}</p>
+  {% endif %}
+  {% if imp.erro %}<p class="erro">{{ imp.erro }}</p>{% endif %}
+</div>
+{% endif %}

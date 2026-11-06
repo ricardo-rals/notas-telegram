@@ -1,0 +1,21 @@
+{
+ "message_id": 8,
+ "date": 1762336808,
+ "chat": {
+  "id": -1001234567890,
+  "type": "supergroup",
+  "title": "Caderno (inventado)"
+ },
+ "from": {
+  "id": 111,
+  "is_bot": false,
+  "first_name": "Dono"
+ },
+ "document": {
+  "file_id": "DOC1",
+  "file_unique_id": "doc1",
+  "file_size": 120000,
+  "file_name": "boleto.pdf",
+  "mime_type": "application/pdf"
+ }
+}

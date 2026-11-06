@@ -1,0 +1,31 @@
+{% for n in notas %}
+<article class="nota{% if n.situacao == 'falha' %} falha{% endif %}">
+  <div class="meta">
+    {{ n.enviada_em | data_local }} · {{ rotulos[n.tipo] }}
+    {% if n.editada_em %} · editada {{ n.editada_em | data_local }}{% endif %}
+    · <a href="{{ n.link }}" target="_blank" rel="noopener">abrir no Telegram</a>
+  </div>
+  {% if n.texto %}<div class="texto">{{ n.texto }}</div>{% endif %}
+  {% if n.arquivo_caminho %}
+    {% if n.tipo == 'foto' %}
+      <a href="/media/{{ n.arquivo_caminho }}" target="_blank"><img loading="lazy" src="/media/{{ n.arquivo_caminho }}" alt="{{ n.texto or 'foto' }}"></a>
+    {% elif n.tipo == 'audio' %}
+      <audio controls src="/media/{{ n.arquivo_caminho }}" preload="none"></audio>
+    {% else %}
+      <a href="/media/{{ n.arquivo_caminho }}" download="{{ n.arquivo_nome or n.arquivo_caminho }}">{{ n.arquivo_nome or n.arquivo_caminho }}</a>
+    {% endif %}
+  {% endif %}
+  {% if n.situacao == 'grande_demais' %}<div class="aviso">Arquivo{% if n.arquivo_nome %} {{ n.arquivo_nome }}{% endif %} acima de 20 MB: não foi baixado.</div>{% endif %}
+  {% if n.situacao == 'sem_arquivo' %}<div class="aviso">O arquivo não veio na exportação.</div>{% endif %}
+  {% if n.situacao == 'falha' %}<div class="erro">Falha: {{ n.erro }}</div>{% endif %}
+</article>
+{% else %}
+<p>Nenhuma nota encontrada.</p>
+{% endfor %}
+{% if total > por_pagina %}
+<nav class="paginas">
+  {% if pagina > 1 %}<a href="/?{{ consulta(pagina - 1) }}">← mais recentes</a>{% else %}<span></span>{% endif %}
+  <span class="meta">página {{ pagina }} de {{ paginas }} · {{ total }} notas</span>
+  {% if pagina < paginas %}<a href="/?{{ consulta(pagina + 1) }}">mais antigas →</a>{% else %}<span></span>{% endif %}
+</nav>
+{% endif %}

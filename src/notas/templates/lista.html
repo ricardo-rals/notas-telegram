@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block conteudo %}
+<form id="filtros" class="filtros" action="/" method="get"
+      hx-get="/" hx-target="#notas" hx-push-url="true"
+      hx-trigger="input changed delay:300ms from:input, change from:select, submit">
+  <label for="q" hidden>Buscar</label>
+  <input id="q" type="search" name="q" value="{{ q }}" placeholder="Buscar por palavra" autofocus>
+  <label for="tipo" hidden>Tipo</label>
+  <select id="tipo" name="tipo">
+    <option value="">Todos os tipos</option>
+    {% for valor, rotulo in tipos %}
+    <option value="{{ valor }}" {% if valor == tipo %}selected{% endif %}>{{ rotulo }}</option>
+    {% endfor %}
+  </select>
+</form>
+<div id="notas"
+     {% if pagina == 1 %}hx-get="/" hx-include="#filtros" hx-trigger="every 10s"{% endif %}>
+  {% include "_notas.html" %}
+</div>
+{% endblock %}

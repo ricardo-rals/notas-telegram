@@ -1,0 +1,31 @@
+{
+ "message_id": 10,
+ "date": 1762336810,
+ "chat": {
+  "id": -1001234567890,
+  "type": "supergroup",
+  "title": "Caderno (inventado)"
+ },
+ "from": {
+  "id": 111,
+  "is_bot": false,
+  "first_name": "Dono"
+ },
+ "animation": {
+  "file_id": "GIF1",
+  "file_unique_id": "gif1",
+  "file_size": 300000,
+  "file_name": "x.mp4",
+  "mime_type": "video/mp4",
+  "duration": 2,
+  "width": 1,
+  "height": 1
+ },
+ "document": {
+  "file_id": "GIF1",
+  "file_unique_id": "gif1",
+  "file_size": 300000,
+  "file_name": "x.mp4",
+  "mime_type": "video/mp4"
+ }
+}

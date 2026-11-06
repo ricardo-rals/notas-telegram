@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% block titulo %}Notas{% endblock %}</title>
+<script src="/static/htmx.min.js"></script>
+<!-- respostas 4xx (409/422) também são exibidas -->
+<meta name="htmx-config" content='{"responseHandling":[{"code":"204","swap":false},{"code":"[23]..","swap":true},{"code":"4..","swap":true,"error":false},{"code":"...","swap":false}]}'>
+<style>
+  :root { color-scheme: light dark; --borda: #8884; --fraco: #888; --falha: #d33; }
+  body { font: 15px/1.5 system-ui, sans-serif; max-width: 860px; margin: 0 auto; padding: 1rem; }
+  nav a { margin-right: 1rem; }
+  form.filtros { display: flex; gap: .5rem; margin: 1rem 0; }
+  form.filtros input[type=search] { flex: 1; padding: .4rem; }
+  .nota { border-top: 1px solid var(--borda); padding: .75rem 0; }
+  .nota.falha { border-left: 4px solid var(--falha); padding-left: .75rem; }
+  .meta { color: var(--fraco); font-size: .85em; }
+  .texto { white-space: pre-wrap; overflow-wrap: anywhere; margin: .25rem 0; }
+  .aviso { font-size: .9em; }
+  .erro { color: var(--falha); font-family: monospace; white-space: pre-wrap; }
+  img { max-width: 240px; max-height: 240px; border-radius: 4px; display: block; }
+  .paginas { display: flex; justify-content: space-between; margin: 1rem 0; }
+</style>
+</head>
+<body>
+<nav><a href="/">Notas</a><a href="/importar">Importar exportação</a></nav>
+{% block conteudo %}{% endblock %}
+</body>
+</html>

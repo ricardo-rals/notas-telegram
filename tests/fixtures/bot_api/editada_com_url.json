@@ -1,0 +1,23 @@
+{
+ "message_id": 1,
+ "date": 1762336801,
+ "chat": {
+  "id": -1001234567890,
+  "type": "supergroup",
+  "title": "Caderno (inventado)"
+ },
+ "from": {
+  "id": 111,
+  "is_bot": false,
+  "first_name": "Dono"
+ },
+ "text": "comprar em https://mercado.exemplo",
+ "edit_date": 1762337701,
+ "entities": [
+  {
+   "type": "url",
+   "offset": 10,
+   "length": 24
+  }
+ ]
+}

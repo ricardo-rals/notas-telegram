@@ -1,0 +1,21 @@
+{
+ "message_id": 5,
+ "date": 1762336805,
+ "chat": {
+  "id": -1001234567890,
+  "type": "supergroup",
+  "title": "Caderno (inventado)"
+ },
+ "from": {
+  "id": 111,
+  "is_bot": false,
+  "first_name": "Dono"
+ },
+ "voice": {
+  "file_id": "VOZ1",
+  "file_unique_id": "voz1",
+  "file_size": 20000,
+  "mime_type": "audio/ogg",
+  "duration": 4
+ }
+}

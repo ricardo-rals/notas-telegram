@@ -1,0 +1,231 @@
+{
+ "name": "Caderno (inventado)",
+ "type": "private_supergroup",
+ "id": 1234567890,
+ "messages": [
+  {
+   "id": 101,
+   "type": "message",
+   "date": "2025-11-05T07:00:00",
+   "date_unixtime": "1762336901",
+   "from": "Dono",
+   "from_id": "user111",
+   "text": "comprar pão",
+   "text_entities": [
+    {
+     "type": "plain",
+     "text": "comprar pão"
+    }
+   ]
+  },
+  {
+   "id": 102,
+   "type": "message",
+   "date": "2025-11-05T07:00:00",
+   "date_unixtime": "1762336902",
+   "from": "Dono",
+   "from_id": "user111",
+   "text": [
+    "olha isso ",
+    {
+     "type": "link",
+     "text": "https://exemplo.com"
+    }
+   ],
+   "text_entities": [
+    {
+     "type": "plain",
+     "text": "olha isso "
+    },
+    {
+     "type": "link",
+     "text": "https://exemplo.com"
+    }
+   ]
+  },
+  {
+   "id": 103,
+   "type": "message",
+   "date": "2025-11-05T07:00:00",
+   "date_unixtime": "1762336903",
+   "from": "Dono",
+   "from_id": "user111",
+   "text": "quadro da reunião",
+   "text_entities": [
+    {
+     "type": "plain",
+     "text": "quadro da reunião"
+    }
+   ],
+   "photo": "photos/photo_1.jpg",
+   "photo_file_size": 3,
+   "width": 1,
+   "height": 1
+  },
+  {
+   "id": 104,
+   "type": "message",
+   "date": "2025-11-05T07:00:00",
+   "date_unixtime": "1762336904",
+   "from": "Dono",
+   "from_id": "user111",
+   "text": "",
+   "text_entities": [],
+   "file": "voice_messages/audio_1.ogg",
+   "file_name": "audio_1.ogg",
+   "file_size": 3,
+   "media_type": "voice_message",
+   "mime_type": "audio/ogg"
+  },
+  {
+   "id": 105,
+   "type": "message",
+   "date": "2025-11-05T07:00:00",
+   "date_unixtime": "1762336905",
+   "from": "Dono",
+   "from_id": "user111",
+   "text": "",
+   "text_entities": [],
+   "file": "files/boleto.pdf",
+   "file_name": "boleto.pdf",
+   "file_size": 3,
+   "mime_type": "application/pdf"
+  },
+  {
+   "id": 106,
+   "type": "message",
+   "date": "2025-11-05T07:00:00",
+   "date_unixtime": "1762336906",
+   "from": "Dono",
+   "from_id": "user111",
+   "text": "vídeo curto",
+   "text_entities": [
+    {
+     "type": "plain",
+     "text": "vídeo curto"
+    }
+   ],
+   "file": "video_files/v.mp4",
+   "file_name": "v.mp4",
+   "file_size": 3,
+   "media_type": "video_file",
+   "mime_type": "video/mp4"
+  },
+  {
+   "id": 107,
+   "type": "message",
+   "date": "2025-11-05T07:00:00",
+   "date_unixtime": "1762336907",
+   "from": "Dono",
+   "from_id": "user111",
+   "text": "",
+   "text_entities": [],
+   "location_information": {
+    "latitude": -23.55052,
+    "longitude": -46.633308
+   }
+  },
+  {
+   "id": 108,
+   "type": "message",
+   "date": "2025-11-05T07:00:00",
+   "date_unixtime": "1762336908",
+   "from": "Dono",
+   "from_id": "user111",
+   "text": "",
+   "text_entities": [],
+   "contact_information": {
+    "first_name": "Fulano",
+    "last_name": "de Tal",
+    "phone_number": "+5511999990000"
+   }
+  },
+  {
+   "id": 109,
+   "type": "message",
+   "date": "2025-11-05T07:00:00",
+   "date_unixtime": "1762336909",
+   "from": "Dono",
+   "from_id": "user111",
+   "text": "",
+   "text_entities": [],
+   "file": "stickers/s.webp",
+   "file_size": 3,
+   "media_type": "sticker",
+   "sticker_emoji": "👍",
+   "mime_type": "image/webp"
+  },
+  {
+   "id": 110,
+   "type": "message",
+   "date": "2025-11-05T07:00:00",
+   "date_unixtime": "1762336910",
+   "from": "Dono",
+   "from_id": "user111",
+   "text": "texto editado depois",
+   "text_entities": [
+    {
+     "type": "plain",
+     "text": "texto editado depois"
+    }
+   ],
+   "edited": "2025-11-05T08:00:00",
+   "edited_unixtime": "1762341800"
+  },
+  {
+   "id": 111,
+   "type": "message",
+   "date": "2025-11-05T07:00:00",
+   "date_unixtime": "abc",
+   "from": "Dono",
+   "from_id": "user111",
+   "text": "item malformado",
+   "text_entities": [
+    {
+     "type": "plain",
+     "text": "item malformado"
+    }
+   ]
+  },
+  {
+   "id": 201,
+   "type": "message",
+   "date": "2025-11-05T07:00:00",
+   "date_unixtime": "1762337001",
+   "from": "Outra",
+   "from_id": "user222",
+   "text": "mensagem de outra pessoa",
+   "text_entities": [
+    {
+     "type": "plain",
+     "text": "mensagem de outra pessoa"
+    }
+   ]
+  },
+  {
+   "id": 202,
+   "type": "message",
+   "date": "2025-11-05T07:00:00",
+   "date_unixtime": "1762337002",
+   "from": "Outra",
+   "from_id": "user222",
+   "text": "",
+   "text_entities": [],
+   "photo": "photos/photo_outro.jpg",
+   "photo_file_size": 3,
+   "width": 1,
+   "height": 1
+  },
+  {
+   "id": 300,
+   "type": "service",
+   "date": "2025-11-05T07:00:00",
+   "date_unixtime": "1762336800",
+   "actor": "Dono",
+   "actor_id": "user111",
+   "action": "pin_message",
+   "text": "",
+   "text_entities": []
+  }
+ ]
+}

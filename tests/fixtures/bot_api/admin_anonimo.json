@@ -1,0 +1,21 @@
+{
+ "message_id": 902,
+ "date": 1762336801,
+ "chat": {
+  "id": -1001234567890,
+  "type": "supergroup",
+  "title": "Caderno (inventado)"
+ },
+ "from": {
+  "id": 1087968824,
+  "is_bot": true,
+  "first_name": "Group",
+  "username": "GroupAnonymousBot"
+ },
+ "text": "comprar pão",
+ "sender_chat": {
+  "id": -1001234567890,
+  "type": "supergroup",
+  "title": "Caderno (inventado)"
+ }
+}
