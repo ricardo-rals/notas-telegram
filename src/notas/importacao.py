@@ -17,6 +17,7 @@ from notas.regras import (
     deve_baixar,
     link_mensagem,
     normalizar_exportacao,
+    sites_da_nota,
 )
 from notas.repositorio import (
     ImportacaoEmAndamento,
@@ -66,9 +67,12 @@ def _processar_item(item: dict, pasta: Path, chat_id: int, sessao: Session, cfg:
         "bruto": json.dumps(item, ensure_ascii=False),
     }
     copiado: Path | None = None
+    sites: frozenset[str] = frozenset()
     try:
         m = normalizar_exportacao(item, chat_id)
         c = classificar(m)
+        if c.tipo == "link":
+            sites = sites_da_nota(m)
         dados = base | {
             "enviada_em": m.enviada_em, "editada_em": m.editada_em, "tipo": c.tipo, "texto": c.texto,
             "arquivo_caminho": None, "arquivo_nome": m.midia_nome, "arquivo_tamanho": m.midia_tamanho,
@@ -90,6 +94,7 @@ def _processar_item(item: dict, pasta: Path, chat_id: int, sessao: Session, cfg:
                 shutil.copyfile(origem, copiado)
                 dados.update(arquivo_caminho=copiado.name, arquivo_tamanho=origem.stat().st_size)
     except Exception as e:
+        sites = frozenset()
         if copiado:
             copiado.unlink(missing_ok=True)
             copiado = None
@@ -99,7 +104,7 @@ def _processar_item(item: dict, pasta: Path, chat_id: int, sessao: Session, cfg:
             "situacao": "falha", "erro": f"{type(e).__name__}: {e}",
         }
 
-    if not salvar_importada(sessao, dados):  # outra via criou no meio tempo
+    if not salvar_importada(sessao, dados, sites):  # outra via criou no meio tempo
         if copiado:
             copiado.unlink(missing_ok=True)
         return "existentes"

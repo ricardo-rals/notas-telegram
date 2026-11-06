@@ -116,3 +116,81 @@ def test_exportacao_arquivo_nao_incluido():
     item = carregar_fixture("exportacao_sem_midia/result.json")["messages"][0]
     m = normalizar_exportacao(item, CHAT)
     assert m.midia == "foto" and m.midia_ref is None
+
+
+# --- 002: sites dos links ------------------------------------------------------------
+from notas.regras import site, sites_da_nota, sites_do_texto  # noqa: E402
+
+
+@pytest.mark.parametrize(
+    "url, esperado",
+    [
+        ("https://www.youtube.com/x", "youtube.com"),
+        ("https://m.youtube.com", "youtube.com"),
+        ("https://music.youtube.com", "youtube.com"),
+        ("HTTPS://YouTube.COM:8080/a", "youtube.com"),
+        ("https://pt.wikipedia.org", "wikipedia.org"),
+        ("https://folha.uol.com.br/a", "uol.com.br"),
+        ("http://exemplo.co.uk", "exemplo.co.uk"),
+        ("https://fulano.github.io/p", "fulano.github.io"),
+        ("https://www.m.exemplo.com", "exemplo.com"),
+        ("http://exemplo.com./", "exemplo.com"),
+        ("exemplo.com.br/x", "exemplo.com.br"),
+        ("http://192.168.0.1:8000", "192.168.0.1"),
+        ("http://[::1]/", "::1"),
+        ("http://localhost:3000", "localhost"),
+        ("https://xn--bcher-kva.de", "bücher.de"),
+        ("https://www.BÜCHER.de", "bücher.de"),
+        ("http://com.br", None),
+        ("http://", None),
+        ("https://", None),
+        ("não é url", None),
+    ],
+)
+def test_site(url, esperado):
+    assert site(url) == esperado
+
+
+def urls_bot(nome):
+    return normalizar_bot_api(carregar_fixture(f"bot_api/{nome}.json")).urls
+
+
+@pytest.mark.parametrize(
+    "nome, urls",
+    [
+        ("link_entidade", ("https://exemplo.com",)),
+        ("link_text_link", ("https://exemplo.com/x",)),
+        ("link_varios_sites", ("https://www.youtube.com/a", "https://m.youtube.com/b", "https://instagram.com/c")),
+        ("link_sem_esquema", ("exemplo.com.br",)),
+        ("link_idn", ("https://xn--bcher-kva.de/",)),
+        ("texto", ()),
+    ],
+)
+def test_urls_bot_api(nome, urls):
+    assert urls_bot(nome) == urls
+
+
+def test_urls_exportacao():
+    msgs = carregar_fixture("exportacao_links/result.json")["messages"]
+    assert [normalizar_exportacao(m, CHAT).urls for m in msgs] == [
+        ("https://m.facebook.com/evento",), ("https://www.youtube.com/x",), (),
+    ]
+
+
+def test_urls_sem_entidades_e_repetidas():
+    d = carregar_fixture("bot_api/texto.json") | {"text": "https://a.com e https://a.com"}
+    assert normalizar_bot_api(d).urls == ("https://a.com",)
+
+
+def test_sites_da_nota():
+    m = normalizar_bot_api(carregar_fixture("bot_api/link_varios_sites.json"))
+    assert sites_da_nota(m) == frozenset({"youtube.com", "instagram.com"})
+    sem = normalizar_bot_api(carregar_fixture("bot_api/texto.json") | {"text": "http://com.br"})
+    assert sites_da_nota(sem) == frozenset({""})
+    misto = normalizar_bot_api(carregar_fixture("bot_api/texto.json") | {"text": "http://com.br https://a.com"})
+    assert sites_da_nota(misto) == frozenset({"a.com"})
+
+
+def test_sites_do_texto():
+    assert sites_do_texto("ver https://www.x.com.br e https://x.com.br/2") == frozenset({"x.com.br"})
+    assert sites_do_texto("") == frozenset({""})

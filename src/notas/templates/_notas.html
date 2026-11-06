@@ -1,3 +1,21 @@
+<nav aria-label="Tipos" class="abas">
+{%- for chave, valor, rotulo in abas %}
+  <a href="{{ href(q, valor) }}"{% if valor == tipo %} aria-current="page"{% endif %}>{{ rotulo }} ({{ contagens[chave] }})</a>
+{%- endfor %}
+</nav>
+{% if tipo == 'link' %}
+<nav aria-label="Sites" class="abas sites">
+  <a href="{{ href(q, 'link') }}"{% if not site %} aria-current="page"{% endif %}>Todos os sites</a>
+{%- for nome, n in sites %}
+  {%- set valor = nome or '-' %}
+  {%- if valor == site %}
+  <a href="{{ href(q, 'link') }}" aria-current="page">{{ nome or 'Sem site identificado' }} ({{ n }})</a>
+  {%- else %}
+  <a href="{{ href(q, 'link', valor) }}">{{ nome or 'Sem site identificado' }} ({{ n }})</a>
+  {%- endif %}
+{%- endfor %}
+</nav>
+{% endif %}
 {% for n in notas %}
 <article class="nota{% if n.situacao == 'falha' %} falha{% endif %}">
   <div class="meta">
@@ -24,8 +42,8 @@
 {% endfor %}
 {% if total > por_pagina %}
 <nav class="paginas">
-  {% if pagina > 1 %}<a href="/?{{ consulta(pagina - 1) }}">← mais recentes</a>{% else %}<span></span>{% endif %}
+  {% if pagina > 1 %}<a href="{{ consulta(pagina - 1) }}">← mais recentes</a>{% else %}<span></span>{% endif %}
   <span class="meta">página {{ pagina }} de {{ paginas }} · {{ total }} notas</span>
-  {% if pagina < paginas %}<a href="/?{{ consulta(pagina + 1) }}">mais antigas →</a>{% else %}<span></span>{% endif %}
+  {% if pagina < paginas %}<a href="{{ consulta(pagina + 1) }}">mais antigas →</a>{% else %}<span></span>{% endif %}
 </nav>
 {% endif %}

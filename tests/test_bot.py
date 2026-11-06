@@ -130,3 +130,40 @@ def test_terceiro_com_mensagem_ilegivel_tambem_nao_gera_falha(sessao, config_tes
     msg = carregar_fixture("bot_api/outro_usuario.json") | {"location": {"latitude": "x"}}
     processar(msg, sessao, config_teste)
     assert notas(sessao) == []
+
+
+# --- 002 US4 ------------------------------------------------------------------------
+from notas.db import NotaSite  # noqa: E402
+
+
+def sites(sessao, mid):
+    sessao.expire_all()
+    return set(sessao.scalars(
+        select(NotaSite.site).join(Nota, Nota.id == NotaSite.nota_id).where(Nota.message_id == mid)
+    ))
+
+
+def test_link_grava_sites(sessao, config_teste):
+    processar("link_varios_sites", sessao, config_teste)
+    assert sites(sessao, 40) == {"youtube.com", "instagram.com"}
+
+
+def test_edicao_troca_site(sessao, config_teste):
+    processar("link_varios_sites", sessao, config_teste)
+    msg = carregar_fixture("bot_api/link_varios_sites.json")
+    t = "https://m.facebook.com/evento"
+    msg |= {"text": t, "entities": [{"type": "url", "offset": 0, "length": len(t)}], "edit_date": 1762337000}
+    processar(msg, sessao, config_teste)
+    assert sites(sessao, 40) == {"facebook.com"}
+
+
+def test_edicao_com_url_vira_link_com_site(sessao, config_teste):
+    processar("editada_com_url", sessao, config_teste)
+    n = notas(sessao)[0]
+    assert n.tipo == "link" and sites(sessao, n.message_id) - {""}
+
+
+def test_foto_com_url_na_legenda_sem_site(sessao, config_teste):
+    msg = carregar_fixture("bot_api/foto_legenda.json") | {"caption": "https://a.com"}
+    processar(msg, sessao, config_teste)
+    assert sites(sessao, msg["message_id"]) == set()

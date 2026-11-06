@@ -21,6 +21,8 @@ from notas.repositorio import (
     POR_PAGINA,
     ImportacaoEmAndamento,
     buscar,
+    contar_por_tipo,
+    contar_sites,
     iniciar_importacao,
     ultima_importacao,
 )
@@ -33,6 +35,14 @@ ROTULOS = {
     "documento": "Documento", "localizacao": "Localização", "contato": "Contato", "outro": "Outro",
 }
 FILTROS = list(ROTULOS.items()) + [("falha", "Falhas")]
+ABAS = [("todas", "", "Todas")] + [(v, v, r) for v, r in FILTROS]  # (chave da contagem, tipo, rótulo)
+
+
+def href(q: str = "", tipo: str = "", site: str = "", pagina: int | None = None) -> str:
+    """Endereço da lista só com os parâmetros preenchidos (FR-009)."""
+    params = {"q": q, "tipo": tipo, "site": site, "pagina": pagina}
+    query = urlencode({k: v for k, v in params.items() if v})
+    return f"/?{query}" if query else "/"
 
 
 def data_local(iso: str) -> str:
@@ -60,16 +70,21 @@ def criar_app(cfg: Config, engine: Engine) -> FastAPI:
         return await call_next(request)
 
     @app.get("/")
-    def lista(request: Request, q: str = "", tipo: str = "", pagina: int = Query(1, ge=1)):
+    def lista(request: Request, q: str = "", tipo: str = "", site: str = "", pagina: int = Query(1, ge=1)):
         if tipo and tipo not in TIPOS and tipo != "falha":
             raise HTTPException(422, "tipo inválido")
         with Session(engine) as sessao:
-            notas, total = buscar(sessao, q=q, tipo=tipo, pagina=pagina)
+            # site na URL: "-" = sem site identificado (''), vazio = todos; outro valor vai como veio (FR-015)
+            filtro_site = {"": None, "-": ""}.get(site, site)
+            notas, total = buscar(sessao, q=q, tipo=tipo, pagina=pagina, site=filtro_site)
+            contagens = contar_por_tipo(sessao)
+            sites = contar_sites(sessao) if tipo == "link" else []
         contexto = {
             "notas": notas, "total": total, "q": q, "tipo": tipo, "pagina": pagina,
             "por_pagina": POR_PAGINA, "paginas": max(1, math.ceil(total / POR_PAGINA)),
-            "rotulos": ROTULOS, "tipos": FILTROS,
-            "consulta": lambda p: urlencode({"q": q, "tipo": tipo, "pagina": p}),
+            "rotulos": ROTULOS, "abas": ABAS, "contagens": contagens, "href": href,
+            "sites": sites, "site": site,
+            "consulta": lambda p: href(q, tipo, site, pagina=p),
         }
         modelo = "_notas.html" if request.headers.get("hx-request") else "lista.html"
         return templates.TemplateResponse(request, modelo, contexto)

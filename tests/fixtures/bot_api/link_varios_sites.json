@@ -1,0 +1,32 @@
+{
+ "message_id": 40,
+ "date": 1762336940,
+ "chat": {
+  "id": -1001234567890,
+  "type": "supergroup",
+  "title": "Caderno (inventado)"
+ },
+ "from": {
+  "id": 111,
+  "is_bot": false,
+  "first_name": "Dono"
+ },
+ "text": "🎉 https://www.youtube.com/a e https://m.youtube.com/b e https://instagram.com/c",
+ "entities": [
+  {
+   "type": "url",
+   "offset": 3,
+   "length": 25
+  },
+  {
+   "type": "url",
+   "offset": 31,
+   "length": 23
+  },
+  {
+   "type": "url",
+   "offset": 57,
+   "length": 23
+  }
+ ]
+}

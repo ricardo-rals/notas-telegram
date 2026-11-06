@@ -7,7 +7,7 @@ from alembic import command
 from alembic.config import Config as AlembicConfig
 from alembic.runtime.migration import MigrationContext
 from alembic.script import ScriptDirectory
-from sqlalchemy import Engine, Integer, String, create_engine, event
+from sqlalchemy import Engine, ForeignKey, Integer, String, create_engine, event
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 from notas.config import RAIZ_REPO
@@ -43,6 +43,15 @@ class Nota(Base):
     origem: Mapped[str]
     bruto: Mapped[str | None]
     criada_em: Mapped[str] = mapped_column(String, default=agora)
+
+
+class NotaSite(Base):
+    """Site de uma nota de link. `site = ''` significa "Sem site identificado"."""
+
+    __tablename__ = "nota_site"
+
+    nota_id: Mapped[int] = mapped_column(ForeignKey("nota.id", ondelete="CASCADE"), primary_key=True)
+    site: Mapped[str] = mapped_column(String, primary_key=True)
 
 
 class Importacao(Base):

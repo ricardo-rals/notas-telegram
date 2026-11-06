@@ -1,0 +1,23 @@
+{
+ "message_id": 42,
+ "date": 1762336942,
+ "chat": {
+  "id": -1001234567890,
+  "type": "supergroup",
+  "title": "Caderno (inventado)"
+ },
+ "from": {
+  "id": 111,
+  "is_bot": false,
+  "first_name": "Dono"
+ },
+ "text": "livraria",
+ "entities": [
+  {
+   "type": "text_link",
+   "offset": 0,
+   "length": 8,
+   "url": "https://xn--bcher-kva.de/"
+  }
+ ]
+}

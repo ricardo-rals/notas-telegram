@@ -4,11 +4,15 @@ Cada fonte (Bot API ao vivo, exportação do Telegram Desktop) tem um adaptador 
 MensagemNormalizada; `classificar` é a mesma para as duas (FR-018).
 """
 
+import ipaddress
 import mimetypes
 import re
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import PurePath
+from urllib.parse import urlsplit
+
+from publicsuffixlist import PublicSuffixList
 
 URL = re.compile(r"https?://\S+", re.IGNORECASE)
 LIMITE_DOWNLOAD = 20 * 1024 * 1024
@@ -33,6 +37,7 @@ class MensagemNormalizada:
     midia_uid: str | None = None
     localizacao: tuple[float, float] | None = None
     contato: tuple[str, str] | None = None
+    urls: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -55,6 +60,30 @@ def _tem_url(texto: str, entidades: list | None) -> bool:
     if entidades is not None:
         return any(e.get("type") in ("url", "text_link", "link") for e in entidades)
     return bool(URL.search(texto))
+
+
+# Pontuação que a regex pega colada no fim da URL ("veja https://a.com,").
+FIM_URL = ".,;:!?)]}>'\""
+
+
+def _urls(texto: str, entidades: list | None) -> tuple[str, ...]:
+    """URLs na ordem, sem repetir. Serve às duas fontes: a Bot API marca `url` por offset/length
+    (em UTF-16) e `text_link` com `url`; a exportação marca `link` com `text` e `text_link` com `href`."""
+    if entidades is None:
+        achadas = [u.rstrip(FIM_URL) for u in URL.findall(texto)]
+    else:
+        utf16 = texto.encode("utf-16-le")
+        achadas = []
+        for e in entidades:
+            tipo = e.get("type")
+            if tipo == "text_link":
+                achadas.append(e.get("url") or e.get("href") or "")
+            elif tipo == "url" and "offset" in e:
+                ini, fim = e["offset"] * 2, (e["offset"] + e["length"]) * 2
+                achadas.append(utf16[ini:fim].decode("utf-16-le", errors="ignore"))
+            elif tipo in ("url", "link"):
+                achadas.append(e.get("text", ""))
+    return tuple(dict.fromkeys(u.strip() for u in achadas if u.strip()))
 
 
 def normalizar_bot_api(d: dict) -> MensagemNormalizada:
@@ -102,6 +131,7 @@ def normalizar_bot_api(d: dict) -> MensagemNormalizada:
         editada_em=iso_utc(d["edit_date"]) if d.get("edit_date") else None,
         texto=texto,
         tem_url=_tem_url(texto, entidades),
+        urls=_urls(texto, entidades),
         **campos,
     )
 
@@ -199,5 +229,60 @@ def normalizar_exportacao(item: dict, chat_id: int) -> MensagemNormalizada:
         editada_em=iso_utc(item["edited_unixtime"]) if item.get("edited_unixtime") else None,
         texto=texto,
         tem_url=_tem_url(texto, item.get("text_entities") or None),
+        urls=_urls(texto, item.get("text_entities") or None),
         **campos,
     )
+
+
+# --- Sites dos links (002) ------------------------------------------------------------
+PSL = PublicSuffixList()  # lista embutida no pacote; nunca baixada em execução (Princípio I)
+ESQUEMA = re.compile(r"^[a-z][a-z0-9+.-]*://", re.IGNORECASE)
+SEM_SITE = ""  # "Sem site identificado"
+
+
+def _legivel(label: str) -> str:
+    if label.startswith("xn--"):
+        try:
+            return label.encode("ascii").decode("idna")
+        except UnicodeError:
+            return label
+    return label
+
+
+def site(url: str) -> str | None:
+    """Domínio registrável da URL (`music.youtube.com` → `youtube.com`); IP e host sem ponto
+    ficam como estão; None se não há host válido ou o host é só um sufixo (`com.br`)."""
+    try:
+        if not ESQUEMA.match(url):
+            url = "http://" + url
+        host = (urlsplit(url).hostname or "").rstrip(".")
+        if not host:
+            return None
+        try:
+            return str(ipaddress.ip_address(host))
+        except ValueError:
+            pass
+        labels = [_legivel(lab) for lab in host.split(".")]
+        if not all(lab and all(ch.isalnum() or ch == "-" for ch in lab) for lab in labels):
+            return None
+        host = ".".join(labels).lower()
+        if "." not in host:
+            return host
+        return PSL.privatesuffix(host)
+    except Exception:
+        return None
+
+
+def _sites(urls) -> frozenset[str]:
+    achados = frozenset(s for s in map(site, urls) if s)
+    return achados or frozenset({SEM_SITE})
+
+
+def sites_da_nota(m: MensagemNormalizada) -> frozenset[str]:
+    """Só para notas do tipo link; nunca vazio e nunca levanta (FR-007, FR-014)."""
+    return _sites(m.urls)
+
+
+def sites_do_texto(texto: str) -> frozenset[str]:
+    """Fallback para nota sem JSON original utilizável."""
+    return _sites(_urls(texto or "", None))

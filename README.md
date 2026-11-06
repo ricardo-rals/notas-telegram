@@ -27,6 +27,20 @@ Telegram Desktop, pelo painel em `/importar` ou com:
 uv run --env-file .env python -m notas.importacao "C:\caminho\da\exportacao"
 ```
 
+## Abas e sites
+
+O painel tem uma aba por tipo de nota, cada uma com a sua contagem. Na aba **Link**, há um botão
+para cada site, agrupado pelo domínio principal: `www.`, `m.`, `music.youtube.com` etc. contam como
+`youtube.com`, e `folha.uol.com.br` conta como `uol.com.br`. O domínio principal sai da lista
+pública de sufixos, que vem dentro do pacote `publicsuffixlist` e não é baixada em execução.
+
+Depois de atualizar o código, rode de novo `uv run --env-file .env alembic upgrade head`; é ele
+que classifica as notas já guardadas. Para atualizar a lista de sufixos:
+
+```powershell
+uv lock --upgrade-package publicsuffixlist; uv sync
+```
+
 ## Testes
 
 ```powershell
@@ -34,5 +48,5 @@ uv run pytest            # tudo
 uv run pytest -m "not lento"
 ```
 
-Roteiro completo de validação: [specs/001-captura-notas/quickstart.md](specs/001-captura-notas/quickstart.md).
+Roteiros de validação: [001](specs/001-captura-notas/quickstart.md) e [002](specs/002-categorias-sites/quickstart.md).
 Princípios do projeto: [.specify/memory/constitution.md](.specify/memory/constitution.md).

@@ -1,0 +1,69 @@
+{
+ "name": "Caderno (inventado)",
+ "type": "private_supergroup",
+ "id": 1234567890,
+ "messages": [
+  {
+   "id": 301,
+   "type": "message",
+   "date": "2025-11-05T07:00:00",
+   "date_unixtime": "1762337301",
+   "from": "Dono",
+   "from_id": "user111",
+   "text": [
+    {
+     "type": "text_link",
+     "text": "evento",
+     "href": "https://m.facebook.com/evento"
+    }
+   ],
+   "text_entities": [
+    {
+     "type": "text_link",
+     "text": "evento",
+     "href": "https://m.facebook.com/evento"
+    }
+   ]
+  },
+  {
+   "id": 302,
+   "type": "message",
+   "date": "2025-11-05T07:00:00",
+   "date_unixtime": "1762337302",
+   "from": "Dono",
+   "from_id": "user111",
+   "text": [
+    "vídeo ",
+    {
+     "type": "link",
+     "text": "https://www.youtube.com/x"
+    }
+   ],
+   "text_entities": [
+    {
+     "type": "plain",
+     "text": "vídeo "
+    },
+    {
+     "type": "link",
+     "text": "https://www.youtube.com/x"
+    }
+   ]
+  },
+  {
+   "id": 303,
+   "type": "message",
+   "date": "2025-11-05T07:00:00",
+   "date_unixtime": "1762337303",
+   "from": "Dono",
+   "from_id": "user111",
+   "text": "só texto",
+   "text_entities": [
+    {
+     "type": "plain",
+     "text": "só texto"
+    }
+   ]
+  }
+ ]
+}

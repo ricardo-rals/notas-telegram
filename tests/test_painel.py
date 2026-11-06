@@ -130,3 +130,92 @@ def test_importar_com_outra_rodando(cliente, sessao):
     sessao.commit()
     r = cliente.post("/importar", data={"pasta": str(FIXTURES / "exportacao_ok")})
     assert r.status_code == 409 and "em andamento" in r.text
+
+
+# --- 002 US1: abas por tipo -----------------------------------------------------------
+import re  # noqa: E402
+
+ORDEM_ABAS = ["Todas", "Texto", "Link", "Foto", "Áudio", "Vídeo", "Documento", "Localização",
+              "Contato", "Outro", "Falhas"]
+
+
+def abas(html):
+    nav = re.search(r'<nav aria-label="Tipos"[^>]*>(.*?)</nav>', html, re.S).group(1)
+    return re.findall(r'<a href="([^"]*)"( aria-current="page")?>([^<]*)</a>', nav)
+
+
+def test_abas_com_contagens(cliente, sessao):
+    for i in range(1, 8):
+        salvar_ao_vivo(sessao, nota(i, tipo="foto"))
+    salvar_ao_vivo(sessao, nota(8, texto="palavra"))
+    a = abas(cliente.get("/").text)
+    assert [rot.rsplit(" (", 1)[0] for _, _, rot in a] == ORDEM_ABAS
+    assert dict((rot.rsplit(" (", 1)[0], rot.rsplit(" (", 1)[1]) for _, _, rot in a)["Foto"] == "7)"
+    assert "Vídeo (0)" in [rot for _, _, rot in a]
+    assert [rot for _, cur, rot in a if cur] == ["Todas (8)"]
+    # contagens ignoram a busca; links levam o q e não levam site/pagina
+    a = abas(cliente.get("/", params={"q": "palavra", "tipo": "foto", "pagina": 1}).text)
+    assert [rot for _, cur, rot in a if cur] == ["Foto (7)"]
+    assert all("q=palavra" in href and "site" not in href and "pagina" not in href for href, _, _ in a)
+
+
+def test_sem_select_e_tipo_oculto(cliente, sessao):
+    html = cliente.get("/?tipo=foto").text
+    assert "<select" not in html
+    assert re.search(r'<input type="hidden" name="tipo" value="foto">', html)
+
+
+def test_fragmento_tem_abas(cliente, sessao):
+    salvar_ao_vivo(sessao, nota(1))
+    r = cliente.get("/", headers={"HX-Request": "true"})
+    assert '<nav aria-label="Tipos"' in r.text and "<html" not in r.text
+
+
+# --- 002 US2: botões de site ----------------------------------------------------------
+
+def link_com_sites(sessao, mid, sites, **extra):
+    salvar_ao_vivo(sessao, nota(mid, **({"tipo": "link"} | extra)), sites=frozenset(sites))
+
+
+def botoes(html):
+    m = re.search(r'<nav aria-label="Sites"[^>]*>(.*?)</nav>', html, re.S)
+    return m and re.findall(r'<a href="([^"]*)"( aria-current="page")?>([^<]*)</a>', m.group(1))
+
+
+def popular(sessao):
+    for mid in (1, 2, 3):
+        link_com_sites(sessao, mid, ["youtube.com"], texto=f"yt {mid}")
+    link_com_sites(sessao, 4, ["instagram.com"], texto="insta")
+    link_com_sites(sessao, 5, [""], texto="sem site")
+
+
+def test_botoes_de_site(cliente, sessao):
+    popular(sessao)
+    b = botoes(cliente.get("/?tipo=link").text)
+    assert [rot for _, _, rot in b] == ["Todos os sites", "youtube.com (3)", "instagram.com (1)",
+                                        "Sem site identificado (1)"]
+    assert [rot for _, cur, rot in b if cur] == ["Todos os sites"]
+    assert botoes(cliente.get("/?tipo=foto").text) is None
+
+
+def test_filtrar_por_site(cliente, sessao):
+    popular(sessao)
+    html = cliente.get("/", params={"tipo": "link", "site": "youtube.com", "q": "yt"}).text
+    assert "yt 1" in html and ">insta<" not in html
+    ativo = [(href, rot) for href, cur, rot in botoes(html) if cur]
+    assert ativo == [("/?q=yt&amp;tipo=link", "youtube.com (3)")]  # clicar de novo desmarca
+    assert '<input type="hidden" name="site" value="youtube.com">' in html
+
+
+def test_sem_site_e_site_inexistente(cliente, sessao):
+    popular(sessao)
+    html = cliente.get("/?tipo=link&site=-").text
+    assert "sem site" in html and "yt 1" not in html
+    r = cliente.get("/?tipo=link&site=nao-existe.com")
+    assert r.status_code == 200 and "Nenhuma nota encontrada" in r.text
+
+
+def test_paginacao_preserva_site(cliente, sessao):
+    for mid in range(1, 53):
+        link_com_sites(sessao, mid, ["a.com"])
+    assert "site=a.com" in cliente.get("/?tipo=link&site=a.com").text.split('class="paginas"')[1]
