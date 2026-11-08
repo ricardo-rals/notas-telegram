@@ -1,10 +1,20 @@
 {#- Unidade de troca do HTMX (research R1 da 004): barra lateral, avisos e lista. -#}
 <div id="painel" class="concha" hx-boost="true" hx-target="#painel" hx-select="#painel" hx-swap="outerHTML" hx-indicator="#painel">
-  <nav aria-label="Categorias" class="lateral">
+  <aside class="lateral">
+  <nav aria-label="Categorias">
   {%- for valor, rotulo, n in categorias %}
-    <a href="{{ href(q, valor) }}"{% if valor == tipo %} aria-current="page"{% endif %}>{{ rotulo }}<span class="n">{{ n }}</span></a>
+    <a href="{{ href(q, valor, tag=tag) }}"{% if valor == tipo %} aria-current="page"{% endif %}>{{ rotulo }}<span class="n">{{ n }}</span></a>
   {%- endfor %}
   </nav>
+  {%- if tags %}
+  <nav aria-label="Tags">
+    <h2 class="rotulo">Tags</h2>
+  {%- for nome, n in tags %}
+    <a href="{{ href(q, tipo) if nome == tag else href(q, tipo, tag=nome) }}"{% if nome == tag %} aria-current="page"{% endif %}>#{{ nome }}<span class="n">{{ n }}</span></a>
+  {%- endfor %}
+  </nav>
+  {%- endif %}
+  </aside>
   <section class="principal" aria-label="Notas">
     {%- if falhas %}
     <a class="aviso-falhas" href="/?tipo=falha">
@@ -19,4 +29,6 @@
   </section>
   <input type="hidden" id="f-tipo" name="tipo" value="{{ tipo }}" hx-swap-oob="true">
   <input type="hidden" id="f-site" name="site" value="{{ site }}" hx-swap-oob="true">
+  <input type="hidden" id="f-tag" name="tag" value="{{ tag }}" hx-swap-oob="true">
+  <input type="hidden" id="f-grupo" name="grupo" value="{{ grupo }}" hx-swap-oob="true">
 </div>

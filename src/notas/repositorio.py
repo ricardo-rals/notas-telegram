@@ -4,19 +4,21 @@ import json
 from collections.abc import Iterable
 from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import Connection, Integer, column, delete, func, insert as insert_core, select, text, update
+from sqlalchemy import Connection, Integer, column, delete, false, func, insert as insert_core, not_, or_, select, text, update
 from sqlalchemy.dialects.sqlite import insert
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from notas.db import TIPOS, Importacao, Link, Nota, Previa, agora
+from notas.db import TIPOS, Importacao, Link, Nota, Previa, Tag, agora
 from notas.regras import (
+    GRUPOS_DOCUMENTO,
     SEM_SITE,
     ItemLink,
     itens_de_link,
     itens_do_texto,
     normalizar_bot_api,
     normalizar_exportacao,
+    tags,
 )
 
 # Campos que a captura ao vivo reescreve numa edição; enviada_em, criada_em e origem nunca mudam.
@@ -51,13 +53,23 @@ def _previas_pendentes(conn, linhas: list[dict]) -> None:
         conn.execute(insert(Previa).on_conflict_do_nothing(), urls)
 
 
+def _gravar_tags(sessao: Session, nota_id: int, texto: str | None) -> None:
+    """Substitui as tags da nota pelas hashtags do texto atual (FR-002 da 005)."""
+    sessao.execute(delete(Tag).where(Tag.nota_id == nota_id))
+    nomes = tags(texto)
+    if nomes:
+        sessao.execute(insert_core(Tag), [{"nota_id": nota_id, "nome": n} for n in nomes])
+
+
 def salvar_ao_vivo(sessao: Session, dados: dict, itens: Iterable[ItemLink] = ()) -> None:
     stmt = insert(Nota).values(**dados, origem="ao_vivo", criada_em=agora())
     stmt = stmt.on_conflict_do_update(
         index_elements=["chat_id", "message_id"],
         set_={c: stmt.excluded[c] for c in ATUALIZAVEIS},
     ).returning(Nota.id)
-    _gravar_links(sessao, sessao.execute(stmt).scalar_one(), dados["tipo"], itens, dados["enviada_em"])
+    nota_id = sessao.execute(stmt).scalar_one()
+    _gravar_links(sessao, nota_id, dados["tipo"], itens, dados["enviada_em"])
+    _gravar_tags(sessao, nota_id, dados.get("texto"))
     sessao.commit()
 
 
@@ -93,9 +105,29 @@ def _ids_fts(tabela: str, fts: str):
     )
 
 
-def buscar(sessao: Session, q: str = "", tipo: str = "", pagina: int = 1) -> tuple[list[Nota], int]:
+def _com_tag(tag: str):
+    return Nota.id.in_(select(Tag.nota_id).where(Tag.nome == tag.lower()))
+
+
+def _do_grupo(grupo: str):
+    """Documentos do grupo pela extensão do nome (FR-006 da 005); "outro" = nenhum dos demais."""
+    nome = func.lower(func.coalesce(Nota.arquivo_nome, ""))
+    def casa(exts):
+        return or_(*(nome.like(f"%.{e}") for e in exts)) if exts else false()
+    if grupo == "outro":
+        return not_(or_(*(casa(exts) for _, exts in GRUPOS_DOCUMENTO.values() if exts)))
+    return casa(GRUPOS_DOCUMENTO.get(grupo, ("", ()))[1])
+
+
+def buscar(
+    sessao: Session, q: str = "", tipo: str = "", pagina: int = 1, tag: str = "", grupo: str = ""
+) -> tuple[list[Nota], int]:
     """Lista de notas (todas as abas, exceto a de links, que usa `buscar_links`)."""
     filtro = select(Nota)
+    if tag:
+        filtro = filtro.where(_com_tag(tag))
+    if grupo:
+        filtro = filtro.where(_do_grupo(grupo))
     if q.strip():
         fts = consulta_fts(q)
         if fts is None:
@@ -131,6 +163,30 @@ def contar_por_tipo(sessao: Session) -> dict[str, int]:
     return c
 
 
+def tags_das_notas(sessao: Session, ids) -> dict[int, list[str]]:
+    r: dict[int, list[str]] = {}
+    for nota_id, nome in sessao.execute(select(Tag.nota_id, Tag.nome).where(Tag.nota_id.in_(list(ids))).order_by(Tag.nome)):
+        r.setdefault(nota_id, []).append(nome)
+    return r
+
+
+def contar_tags(sessao: Session) -> list[tuple[str, int]]:
+    """Tags do caderno, da mais usada para a menos usada; empate em ordem alfabética."""
+    n = func.count().label("n")
+    return [tuple(r) for r in sessao.execute(select(Tag.nome, n).group_by(Tag.nome).order_by(n.desc(), Tag.nome))]
+
+
+def contar_grupos_documento(sessao: Session) -> list[tuple[str, int]]:
+    """Grupos presentes na categoria Documento, na ordem de GRUPOS_DOCUMENTO.
+    ponytail: conta em Python sobre os nomes; com dezenas de milhares de documentos, um CASE no SQL."""
+    from collections import Counter
+
+    from notas.regras import grupo_documento
+
+    c = Counter(grupo_documento(n) for n in sessao.scalars(select(Nota.arquivo_nome).where(Nota.tipo == "documento")))
+    return [(g, c[g]) for g in GRUPOS_DOCUMENTO if c[g]]
+
+
 def contar_sites(sessao: Session) -> list[tuple[str, int]]:
     """Itens de link por site, do mais usado ao menos usado; "sem site" sempre por último."""
     n = func.count().label("n")
@@ -141,13 +197,15 @@ def contar_sites(sessao: Session) -> list[tuple[str, int]]:
 
 
 def buscar_links(
-    sessao: Session, site: str | None = None, q: str = "", pagina: int = 1
+    sessao: Session, site: str | None = None, q: str = "", pagina: int = 1, tag: str = ""
 ) -> tuple[list[tuple[Link, Nota, Previa | None]], int]:
     """Aba Link: um item por link (FR-002), do mais recente ao mais antigo pela data do item
     (FR-017). `q` casa com o texto da nota ou com a prévia; `site=''` = sem site identificado."""
     filtro = select(Link, Nota, Previa).join(Nota).outerjoin(Previa, Previa.url == Link.url).where(Nota.tipo == "link")
     if site is not None:
         filtro = filtro.where(Link.site == site)
+    if tag:
+        filtro = filtro.where(_com_tag(tag))
     if q.strip():
         fts = consulta_fts(q)
         if fts is None:
@@ -267,6 +325,7 @@ def salvar_importada(sessao: Session, dados: dict, itens: Iterable[ItemLink] = (
     nota_id = sessao.execute(stmt).scalar()
     if nota_id is not None:
         _gravar_links(sessao, nota_id, dados["tipo"], itens, dados["enviada_em"])
+        _gravar_tags(sessao, nota_id, dados.get("texto"))
     sessao.commit()
     return nota_id is not None
 

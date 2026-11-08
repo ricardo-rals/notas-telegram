@@ -49,6 +49,10 @@
   {%- if n.situacao == 'sem_arquivo' %}<div class="aviso">O arquivo não veio na exportação.</div>{% endif %}
   {%- if n.situacao == 'falha' %}<div class="erro">Falha: {{ n.erro }}</div>{% endif %}
   </div>
+  {%- set etiquetas = tags_por_nota.get(n.id, []) %}
+  {%- if etiquetas %}
+  <p class="etiquetas">{% for t in etiquetas %}<a class="etiqueta" href="{{ href(tag=t) }}">#{{ t }}</a>{% endfor %}</p>
+  {%- endif %}
   <p class="meta">
     <span class="tipo">{{ rotulos[n.tipo] }}</span> · {{ n.enviada_em | data_local }}
     {%- if n.editada_em %} · editada {{ n.editada_em | data_local }}{% endif %}

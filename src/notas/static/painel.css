@@ -103,6 +103,11 @@ code, kbd { font: .85em ui-monospace, "Cascadia Code", monospace; }
   display: flex; flex-direction: column; gap: 2px; padding: 1.25rem .75rem;
   border-right: 1px solid var(--borda);
 }
+.lateral > nav { display: flex; flex-direction: column; gap: 2px; }
+.lateral .rotulo { font-size: .72rem; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--fraco); margin: 1.5rem .75rem .5rem; }
+.etiquetas { display: flex; flex-wrap: wrap; gap: .3rem; margin: .75rem 0 0; }
+.etiqueta { font-size: .78rem; padding: .1rem .5rem; border-radius: 999px; text-decoration: none; color: var(--acento); background: var(--acento-fundo); }
+.etiqueta:hover { text-decoration: underline; }
 .lateral a {
   display: flex; align-items: center; justify-content: space-between; gap: .5rem;
   padding: .45rem .75rem; border-radius: 8px; color: var(--fraco); text-decoration: none; font-size: .92rem;
@@ -262,6 +267,8 @@ form.importar input {
     background: color-mix(in srgb, var(--fundo) 90%, transparent); backdrop-filter: blur(14px);
     scrollbar-width: none;
   }
+  .lateral > nav { display: contents; }
+  .lateral .rotulo { display: none; }
   .lateral a { flex: none; padding: .3rem .7rem; border: 1px solid var(--borda); border-radius: 999px; }
   .lateral .n { margin-left: .25rem; }
   .principal { padding: 1rem 1rem 3rem; }

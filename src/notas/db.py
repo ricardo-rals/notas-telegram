@@ -60,6 +60,15 @@ class Link(Base):
     autor: Mapped[str | None]
 
 
+class Tag(Base):
+    """Hashtag de uma nota, em minúsculas (005)."""
+
+    __tablename__ = "tag"
+
+    nota_id: Mapped[int] = mapped_column(ForeignKey("nota.id", ondelete="CASCADE"), primary_key=True)
+    nome: Mapped[str] = mapped_column(String, primary_key=True)
+
+
 class Previa(Base):
     """Prévia de uma URL (título, descrição, miniatura), compartilhada por todos os itens."""
 

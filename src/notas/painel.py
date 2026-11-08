@@ -19,16 +19,20 @@ from notas.config import Config, ErroConfig, carregar
 from notas.db import TIPOS, Nota, criar_engine, exigir_revisao_atual
 from notas.importacao import encontrar_exportacoes, executar
 from notas.previas import iniciar_thread
+from notas.regras import GRUPOS_DOCUMENTO
 from notas.repositorio import (
     POR_PAGINA,
     ImportacaoEmAndamento,
     buscar,
     buscar_links,
+    contar_grupos_documento,
     contar_novas,
     contar_por_tipo,
+    contar_tags,
     contar_sites,
     iniciar_importacao,
     links_das_notas,
+    tags_das_notas,
     ultima_importacao,
 )
 
@@ -48,9 +52,9 @@ ROTULOS_PLURAIS = {
 PASTAS_EXPORTACAO = [Path.home() / "Downloads" / "Telegram Desktop", Path.home() / "Downloads"]
 
 
-def href(q: str = "", tipo: str = "", site: str = "", pagina: int | None = None) -> str:
-    """Endereço da lista só com os parâmetros preenchidos (FR-009)."""
-    params = {"q": q, "tipo": tipo, "site": site, "pagina": pagina}
+def href(q: str = "", tipo: str = "", site: str = "", pagina: int | None = None, tag: str = "", grupo: str = "") -> str:
+    """Endereço da lista só com os parâmetros preenchidos (FR-009 da 002)."""
+    params = {"q": q, "tipo": tipo, "site": site, "tag": tag, "grupo": grupo, "pagina": pagina}
     query = urlencode({k: v for k, v in params.items() if v})
     return f"/?{query}" if query else "/"
 
@@ -123,7 +127,8 @@ def criar_app(cfg: Config, engine: Engine, iniciar_previas=iniciar_thread, pasta
         return resposta
 
     @app.get("/")
-    def lista(request: Request, q: str = "", tipo: str = "", site: str = "", pagina: int = Query(1, ge=1)):
+    def lista(request: Request, q: str = "", tipo: str = "", site: str = "", tag: str = "", grupo: str = "",
+              pagina: int = Query(1, ge=1)):
         if tipo and tipo not in TIPOS and tipo != "falha":
             raise HTTPException(422, "tipo inválido")
         with Session(engine) as sessao:
@@ -131,10 +136,11 @@ def criar_app(cfg: Config, engine: Engine, iniciar_previas=iniciar_thread, pasta
             filtro_site = {"": None, "-": ""}.get(site, site)
             notas, links, links_por_nota, sites = [], [], {}, []
             if tipo == "link":  # aba Link: um item por link (FR-002 da 003)
-                links, total = buscar_links(sessao, site=filtro_site, q=q, pagina=pagina)
+                links, total = buscar_links(sessao, site=filtro_site, q=q, pagina=pagina, tag=tag)
                 sites = contar_sites(sessao)
             else:
-                notas, total = buscar(sessao, q=q, tipo=tipo, pagina=pagina)
+                notas, total = buscar(sessao, q=q, tipo=tipo, pagina=pagina, tag=tag,
+                                      grupo=grupo if tipo == "documento" else "")
                 links_por_nota = links_das_notas(sessao, [n.id for n in notas if n.tipo == "link"])
             contagens = contar_por_tipo(sessao)
             categorias = [("", "Todas", contagens["todas"])] + [
@@ -142,9 +148,11 @@ def criar_app(cfg: Config, engine: Engine, iniciar_previas=iniciar_thread, pasta
             ]
             fotos = {n.id for n in notas if n.tipo == "foto" and n.arquivo_caminho
                      and (cfg.media_dir / n.arquivo_caminho).is_file()}
+            ids = {n.id for n in notas} | {nota.id for _, nota, _ in links}
+            grupos = contar_grupos_documento(sessao) if tipo == "documento" else []
             # aviso de notas novas só na 1ª página sem filtro (FR-008 da 004)
             novas = None
-            if pagina == 1 and not (q or tipo or site):
+            if pagina == 1 and not (q or tipo or site or tag):
                 novas = notas[0].enviada_em if notas else ""
             contexto = {
                 "notas": notas, "links": links, "links_por_nota": links_por_nota,
@@ -153,7 +161,9 @@ def criar_app(cfg: Config, engine: Engine, iniciar_previas=iniciar_thread, pasta
                 "rotulos": ROTULOS, "plurais": ROTULOS_PLURAIS, "categorias": categorias,
                 "contagens": contagens, "falhas": contagens["falha"], "href": href,
                 "sites": sites, "site": site, "fotos": fotos, "novas_desde": novas,
-                "consulta": lambda p: href(q, tipo, site, pagina=p),
+                "tag": tag, "tags": contar_tags(sessao), "tags_por_nota": tags_das_notas(sessao, ids),
+                "grupo": grupo, "grupos": [(g, GRUPOS_DOCUMENTO[g][0], n) for g, n in grupos],
+                "consulta": lambda p: href(q, tipo, site, pagina=p, tag=tag, grupo=grupo),
             }
             # renderiza com a sessão aberta: os objetos ainda são lidos no template
             return templates.TemplateResponse(request, "lista.html", contexto)

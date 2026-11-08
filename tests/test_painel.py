@@ -389,7 +389,7 @@ def test_concha(cliente, sessao):
     antes, depois = html.split('<div id="painel"', 1)
     assert '<form id="filtros"' in antes and '<input id="q" type="search" name="q"' in antes
     assert 'id="f-tipo"' in antes and 'id="f-site"' in antes
-    assert depois.count('hx-swap-oob="true"') == 2
+    assert depois.count('hx-swap-oob="true"') == 4  # tipo, site, tag, grupo
     assert re.search(r'<dialog id="foto"[^>]*>.*?<img.*?class="legenda".*?<button[^>]*class="fechar"', html, re.S)
     assert '<script src="/static/painel.js" defer></script>' in html
     assert "every 10s" not in html.split('id="novas"')[0]  # a lista não se recarrega sozinha
@@ -513,3 +513,40 @@ def test_importar_lista_exportacoes(engine, config_teste, tmp_path):
     vazio = TestClient(criar_app(config_teste, engine, pastas_exportacao=[tmp_path / "nada"]), base_url=BASE_URL)
     html = vazio.get("/importar").text
     assert "Exportar histórico" in html and 'name="pasta"' in html  # instrução + campo manual
+
+
+# --- 005: tags e grupos de documento ---------------------------------------------------
+def secao_tags(html):
+    m = re.search(r'<nav aria-label="Tags"[^>]*>(.*?)</nav>', html, re.S)
+    return m and [(href, bool(cur), rot.strip(), int(n)) for href, cur, rot, n in re.findall(
+        r'<a href="([^"]*)"( aria-current="page")?[^>]*>([^<]*)<span class="n">(\d+)</span></a>', m.group(1))]
+
+
+def test_secao_de_tags_e_filtro(cliente, sessao):
+    assert secao_tags(cliente.get("/").text) is None  # sem tags, sem seção
+    salvar_ao_vivo(sessao, nota(1, texto="bolo #receita", tipo="foto", arquivo_caminho=None))
+    salvar_ao_vivo(sessao, nota(2, texto="pão #receita #cozinha"))
+    salvar_ao_vivo(sessao, nota(3, texto="#trabalho"))
+    t = secao_tags(cliente.get("/").text)
+    assert [(r, n) for _, _, r, n in t] == [("#receita", 2), ("#cozinha", 1), ("#trabalho", 1)]
+    html = cliente.get("/?tag=receita").text
+    assert "bolo" in html and "pão" in html and "#trabalho</a>" not in html.split('aria-label="Tags"')[0]
+    assert [r for _, cur, r, _ in secao_tags(html) if cur] == ["#receita"]
+    assert [href for href, cur, _, _ in secao_tags(html) if cur] == ["/"]  # clicar de novo desmarca
+    assert all("tag=receita" in href for href, _, _, _ in categorias(html))  # categorias preservam a tag
+    assert "bolo" not in cliente.get("/?tag=receita&tipo=texto").text
+    assert re.search(r'<input type="hidden" id="f-tag" name="tag" value="receita"', html)
+    cartao_pao = re.search(r'<article class="cartao nota tipo-texto">(.*?)</article>', html, re.S).group(1)
+    assert re.search(r'<a class="etiqueta" href="/\?tag=receita">#receita</a>', cartao_pao)
+    assert "Nenhuma nota nesta categoria" in cliente.get("/?tag=inexistente").text
+
+
+def test_grupos_de_documento_no_painel(cliente, sessao):
+    for mid, nome in enumerate(["a.pdf", "b.pdf", "c.xlsx", "d.zip"], start=1):
+        salvar_ao_vivo(sessao, nota(mid, tipo="documento", arquivo_nome=nome, texto=f"doc {nome}"))
+    assert 'aria-label="Tipos de arquivo"' not in cliente.get("/").text
+    html = cliente.get("/?tipo=documento").text
+    nav = re.search(r'<nav aria-label="Tipos de arquivo"[^>]*>(.*?)</nav>', html, re.S).group(1)
+    assert re.findall(r">([^<]+)</a>", nav) == ["Todos", "PDF (2)", "Planilhas (1)", "Compactados (1)"]
+    html = cliente.get("/?tipo=documento&grupo=pdf").text
+    assert "doc a.pdf" in html and "doc c.xlsx" not in html

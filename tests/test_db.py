@@ -201,3 +201,25 @@ def test_migracao_0004_enfileira_previas_de_links_antigos(config_teste):
             ("https://a.com/1", "pendente"), ("https://b.com/2", "ok")
         ]
     eng.dispose()
+
+
+def test_migracao_0005_preenche_tags(config_teste):
+    from alembic import command
+
+    from notas.db import _alembic, criar_engine
+
+    cfg = _alembic(config_teste.database_path)
+    command.upgrade(cfg, "0004")
+    eng = criar_engine(config_teste.database_path)
+    with eng.begin() as conn:
+        for mid, texto in [(1, "bolo #Receita #receita"), (2, "nada"), (3, "#trabalho e https://x.com/#ancora")]:
+            conn.execute(text(
+                "INSERT INTO nota (chat_id, message_id, enviada_em, tipo, texto, link, situacao, origem, criada_em)"
+                " VALUES (-1001234567890, :m, '2026-11-05T10:00:00+00:00', 'texto', :t, 'l', 'ok', 'ao_vivo', 'x')"
+            ), dict(m=mid, t=texto))
+    command.upgrade(cfg, "head")
+    with eng.connect() as conn:
+        assert conn.execute(text(
+            "SELECT n.message_id, t.nome FROM tag t JOIN nota n ON n.id = t.nota_id ORDER BY 1, 2")).all() == [
+            (1, "receita"), (3, "trabalho")]
+    eng.dispose()

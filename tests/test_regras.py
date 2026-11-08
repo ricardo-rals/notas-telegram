@@ -251,3 +251,33 @@ def test_posicoes_exportacao():
     msgs = carregar_fixture("exportacao_links/result.json")["messages"]
     m = normalizar_exportacao(msgs[1], CHAT)  # "vídeo " + link
     assert m.posicoes == (6,)
+
+
+# --- 005: tags e grupos de documento ---------------------------------------------------
+from notas.regras import grupo_documento, tags  # noqa: E402
+
+
+@pytest.mark.parametrize("texto,esperado", [
+    ("pão de queijo #Receita #cozinha", ["receita", "cozinha"]),
+    ("#trabalho: reunião", ["trabalho"]),
+    ("(#ideia) e #ideia de novo, #IDEIA.", ["ideia"]),
+    ("#reunião_2026 ok", ["reunião_2026"]),
+    ("link https://site.com/pag#secao e https://a.com/?x=1#b", []),
+    ("c# e a#b não; # sozinho; #123; ##dupla", []),
+    ("#" + "a" * 41, []),
+    ("#" + "a" * 40, ["a" * 40]),
+    ("", []),
+    (None, []),
+])
+def test_tags(texto, esperado):
+    assert tags(texto) == esperado
+
+
+@pytest.mark.parametrize("nome,grupo", [
+    ("boleto.PDF", "pdf"), ("contas.xlsx", "planilha"), ("dados.csv", "planilha"),
+    ("carta.docx", "texto"), ("notas.md", "texto"), ("aula.pptx", "apresentacao"),
+    ("fotos.zip", "compactado"), ("backup.tar.gz", "compactado"), ("scan.heic", "imagem"),
+    ("programa.exe", "outro"), ("sem_extensao", "outro"), (None, "outro"),
+])
+def test_grupo_documento(nome, grupo):
+    assert grupo_documento(nome) == grupo

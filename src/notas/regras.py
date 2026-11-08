@@ -347,3 +347,35 @@ def itens_do_texto(texto: str, enviada_em: str) -> list[ItemLink]:
         return _itens(*_urls(texto or "", None), texto or "", enviada_em)
     except Exception:
         return [ItemLink(0, "", SEM_SITE, enviada_em, None)]
+
+
+# --- 005: tags por hashtag e grupos de documento ---------------------------------------
+HASHTAG = re.compile(r"(?<![\w#&])#(\w{1,40})(?![\w#])")
+
+
+def tags(texto: str | None) -> list[str]:
+    """Hashtags do texto, em minúsculas, sem repetição, na ordem em que aparecem (FR-001 da 005).
+    URLs saem antes, para `/#secao` não virar tag."""
+    sem_urls = URL.sub(" ", texto or "")
+    vistas: dict[str, None] = {}
+    for m in HASHTAG.finditer(sem_urls):
+        nome = m[1].lower()
+        if any(c.isalpha() for c in nome):
+            vistas.setdefault(nome, None)
+    return list(vistas)
+
+
+GRUPOS_DOCUMENTO = {  # (valor, rótulo, extensões); a ordem é a dos botões
+    "pdf": ("PDF", ("pdf",)),
+    "planilha": ("Planilhas", ("xls", "xlsx", "ods", "csv")),
+    "texto": ("Textos", ("doc", "docx", "odt", "txt", "rtf", "md")),
+    "apresentacao": ("Apresentações", ("ppt", "pptx", "odp", "key")),
+    "compactado": ("Compactados", ("zip", "rar", "7z", "tar", "gz")),
+    "imagem": ("Imagens", ("jpg", "jpeg", "png", "gif", "webp", "heic", "svg")),
+    "outro": ("Outros", ()),
+}
+
+
+def grupo_documento(nome: str | None) -> str:
+    ext = (nome or "").rsplit(".", 1)[-1].lower() if "." in (nome or "") else ""
+    return next((g for g, (_, exts) in GRUPOS_DOCUMENTO.items() if ext in exts), "outro")

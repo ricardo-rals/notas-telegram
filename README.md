@@ -65,6 +65,13 @@ as contagens; à direita, os cartões, cada tipo no seu formato. Atalhos: `/` ou
 aviso "N notas novas · mostrar", sem recarregar o que você está vendo. Em **Importar**, as
 exportações do Telegram Desktop que estão em `Downloads` aparecem prontas para importar.
 
+## Tags e tipos de arquivo
+
+Escreva `#receita`, `#trabalho` (qualquer palavra) na mensagem ou na legenda: a nota ganha a tag,
+que aparece na barra lateral com a contagem e filtra junto com a categoria e a busca. Editar a
+mensagem atualiza as tags. Na categoria **Documento**, os botões separam PDF, planilhas, textos,
+apresentações, compactados e imagens.
+
 ## Testes
 
 ```powershell

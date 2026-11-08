@@ -390,3 +390,64 @@ def test_aba_link_com_10000_notas_em_menos_de_1s(sessao, engine):
         inicio = time.perf_counter()
         reconstruir_links(conn)
         assert time.perf_counter() - inicio < 60
+
+
+# --- 005: tags ---------------------------------------------------------------------------
+def tags_da(sessao, mid):
+    from notas.db import Tag
+    return sorted(sessao.scalars(select(Tag.nome).join(Nota).where(Nota.message_id == mid)))
+
+
+def test_gravar_e_substituir_tags(sessao):
+    from notas.repositorio import contar_tags, salvar_importada
+    salvar_ao_vivo(sessao, dados(1, texto="pão #Receita #cozinha"))
+    assert tags_da(sessao, 1) == ["cozinha", "receita"]
+    salvar_ao_vivo(sessao, dados(1, texto="pão #receita"))  # edição
+    assert tags_da(sessao, 1) == ["receita"]
+    salvar_importada(sessao, dados(2, texto="#receita #trabalho") | {"tipo": "texto"})
+    salvar_ao_vivo(sessao, dados(3, texto="#trabalho"))
+    salvar_ao_vivo(sessao, dados(4, texto="#zebra"))
+    assert contar_tags(sessao) == [("receita", 2), ("trabalho", 2), ("zebra", 1)]
+
+
+def test_buscar_por_tag(sessao):
+    salvar_ao_vivo(sessao, dados(1, texto="foto #receita", tipo="foto"))
+    salvar_ao_vivo(sessao, dados(2, texto="texto #receita bolo"))
+    salvar_ao_vivo(sessao, dados(3, texto="outra coisa #trabalho"))
+    com_links(sessao, 4, ["a.com"], texto="link #receita")
+    assert {n.message_id for n in buscar(sessao, tag="receita")[0]} == {1, 2, 4}
+    assert [n.message_id for n in buscar(sessao, tag="receita", tipo="foto")[0]] == [1]
+    assert [n.message_id for n in buscar(sessao, tag="receita", q="bolo")[0]] == [2]
+    assert buscar(sessao, tag="inexistente") == ([], 0)
+    assert buscar_links(sessao, tag="receita")[1] == 1 and buscar_links(sessao, tag="trabalho")[1] == 0
+
+
+def test_grupos_de_documento(sessao):
+    from notas.repositorio import contar_grupos_documento
+    for mid, nome in enumerate(["a.pdf", "b.PDF", "c.xlsx", "d.zip", None], start=1):
+        salvar_ao_vivo(sessao, dados(mid, tipo="documento", arquivo_nome=nome))
+    salvar_ao_vivo(sessao, dados(9, tipo="foto", arquivo_nome="x.pdf"))  # não é documento
+    assert contar_grupos_documento(sessao) == [("pdf", 2), ("planilha", 1), ("compactado", 1), ("outro", 1)]
+    assert {n.message_id for n in buscar(sessao, tipo="documento", grupo="pdf")[0]} == {1, 2}
+    assert [n.message_id for n in buscar(sessao, tipo="documento", grupo="outro")[0]] == [5]
+
+
+@pytest.mark.lento
+def test_tags_com_10000_notas_em_menos_de_1s(sessao):
+    import time
+
+    from sqlalchemy import insert as insert_core
+
+    from notas.db import Tag
+    from notas.repositorio import contar_tags
+    sessao.execute(insert_core(Nota), [
+        dados(mid=i, texto=f"nota {i}", enviada_em=f"2026-01-01T00:00:{i % 60:02d}+00:00")
+        | {"origem": "ao_vivo", "criada_em": "x"} for i in range(1, 10_001)])
+    ids = list(sessao.scalars(select(Nota.id)))
+    sessao.execute(insert_core(Tag), [{"nota_id": i, "nome": f"t{(i + k) % 300}"} for i in ids for k in (0, 1)])
+    sessao.commit()
+    for f in (lambda: contar_tags(sessao), lambda: buscar(sessao, tag="t7", pagina=1),
+              lambda: buscar(sessao, tag="t7", q="nota", tipo="texto")):
+        inicio = time.perf_counter()
+        f()
+        assert time.perf_counter() - inicio < 1.0

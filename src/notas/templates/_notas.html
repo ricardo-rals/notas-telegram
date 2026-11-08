@@ -1,13 +1,21 @@
 {%- if tipo == 'link' %}
 <nav aria-label="Sites" class="abas sites">
-  <a href="{{ href(q, 'link') }}"{% if not site %} aria-current="page"{% endif %}>Todos os sites</a>
+  <a href="{{ href(q, 'link', tag=tag) }}"{% if not site %} aria-current="page"{% endif %}>Todos os sites</a>
 {%- for nome, n in sites %}
   {%- set valor = nome or '-' %}
   {%- if valor == site %}
-  <a href="{{ href(q, 'link') }}" aria-current="page">{{ nome or 'Sem site identificado' }} ({{ n }})</a>
+  <a href="{{ href(q, 'link', tag=tag) }}" aria-current="page">{{ nome or 'Sem site identificado' }} ({{ n }})</a>
   {%- else %}
-  <a href="{{ href(q, 'link', valor) }}">{{ nome or 'Sem site identificado' }} ({{ n }})</a>
+  <a href="{{ href(q, 'link', valor, tag=tag) }}">{{ nome or 'Sem site identificado' }} ({{ n }})</a>
   {%- endif %}
+{%- endfor %}
+</nav>
+{%- endif %}
+{%- if tipo == 'documento' and grupos %}
+<nav aria-label="Tipos de arquivo" class="abas sites">
+  <a href="{{ href(q, 'documento', tag=tag) }}"{% if not grupo %} aria-current="page"{% endif %}>Todos</a>
+{%- for valor, rotulo, n in grupos %}
+  <a href="{{ href(q, 'documento', tag=tag) if valor == grupo else href(q, 'documento', tag=tag, grupo=valor) }}"{% if valor == grupo %} aria-current="page"{% endif %}>{{ rotulo }} ({{ n }})</a>
 {%- endfor %}
 </nav>
 {%- endif %}
