@@ -1,9 +1,15 @@
 <!--
 Sync Impact Report
-- Versão: template (sem versão) → 1.0.0 (ratificação inicial)
-- Princípios: 5 placeholders do template → 8 princípios definidos (I a VIII)
-- Seções adicionadas: Restrições Técnicas, Fluxo de Desenvolvimento
-- Seções removidas: nenhuma
+- Versão: 1.0.0 → 1.1.0 (MINOR: orientação materialmente ampliada, nenhum princípio removido)
+- Princípios modificados:
+  - I. Tudo Local: novo item (c), download único de pesos de modelos locais num comando
+    explícito de instalação; inferência sempre offline
+  - II. Regra Antes de Modelo: transcrição de áudio e leitura de texto em imagens nomeadas
+    como casos em que regra não resolve
+  - III. ML com Avaliação Obrigatória: métricas por tarefa (WER, CER), conjunto de avaliação
+    fora do repositório e execução desligável
+- Seções modificadas: Restrições Técnicas (Rede, Processos, Modelos)
+- Seções adicionadas/removidas: nenhuma
 - Templates: plan/spec/tasks leem a constituição em tempo de execução; nada alterado aqui
 - TODOs adiados: nenhum
 -->
@@ -15,17 +21,22 @@ Sync Impact Report
 ### I. Tudo Local
 
 O serviço MUST rodar inteiramente no computador do dono. MUST NOT usar LLM nem qualquer API
-paga. Acesso à rede é permitido apenas para (a) falar com o Telegram e (b) abrir os links
-recebidos para obter título e miniatura. O item (b) MUST poder ser desligado na configuração;
-com ele desligado, nenhuma requisição além do Telegram sai da máquina.
+paga. Acesso à rede é permitido apenas para (a) falar com o Telegram, (b) abrir os links
+recebidos para obter título e miniatura e (c) baixar, uma única vez e num comando explícito de
+instalação rodado pelo dono, os pesos de modelos locais de transcrição de áudio e de leitura de
+texto em imagens (OCR). O item (b) MUST poder ser desligado na configuração; com ele desligado,
+nenhuma requisição além do Telegram sai da máquina. Modelos do item (c) MUST rodar offline:
+nenhum áudio, imagem ou texto do caderno sai do computador para ser processado, e o serviço em
+execução MUST NOT baixar modelos sozinho.
 
 Razão: custo zero, privacidade e funcionamento sem dependência de terceiros.
 
 ### II. Regra Antes de Modelo
 
 Tudo que pode ser resolvido por regra determinística (tipo de mensagem, extração de URL,
-identificação do site) MUST ser resolvido por regra e MUST NOT usar ML. ML só entra onde
-uma regra comprovadamente não resolve.
+identificação do site, tags) MUST ser resolvido por regra e MUST NOT usar ML. ML só entra onde
+uma regra comprovadamente não resolve — por exemplo, transcrever áudio e ler texto dentro de
+imagens.
 
 Razão: regras são previsíveis, testáveis e baratas; modelo é o último recurso.
 
@@ -37,6 +48,13 @@ Todo modelo de ML MUST ter:
 - baseline para comparação;
 - meta numérica declarada no spec da funcionalidade;
 - um script que gera `docs/results.md` a partir do conjunto de teste.
+
+A métrica MUST ser a usual da tarefa: taxa de erro de palavras (WER) para transcrição e taxa de
+erro de caracteres (CER) para OCR, medidas em português. O conjunto de avaliação MUST ser
+criado para esse fim (áudios gravados e imagens produzidas pelo dono, nunca mensagens reais do
+caderno) e MUST ficar fora do repositório; só `docs/results.md`, com números e sem conteúdo,
+é versionado. Cada modelo MUST poder ser desligado na configuração, e o resultado do modelo
+MUST ser guardado separado do conteúdo original da mensagem, sem substituí-lo.
 
 Um modelo novo MUST superar o modelo em uso no mesmo conjunto de teste antes de substituí-lo.
 
@@ -83,11 +101,15 @@ Razão: perda silenciosa é pior que erro; o dono precisa ver e corrigir.
 ## Restrições Técnicas
 
 - Armazenamento: exatamente um arquivo SQLite, com caminho configurável fora do repositório.
-- Rede: apenas Telegram e busca de metadados de links (desligável). Sem LLM, sem API paga.
+- Rede: apenas Telegram, busca de metadados de links (desligável) e download único de pesos
+  de modelos locais num comando de instalação. Sem LLM, sem API paga.
+- Modelos: pesos ficam fora do repositório (pasta ignorada pelo Git ou pasta de dados do
+  usuário); inferência local, desligável por configuração.
 - Exposição: o painel faz bind só em `127.0.0.1`; nada escuta em interface pública.
 - Segredos: token e configuração local ficam fora do Git; o repositório versiona só um
   exemplo de configuração sem valores reais.
-- Processos: bot e painel são os únicos processos de longa duração.
+- Processos: bot e painel são os únicos processos de longa duração; transcrição e OCR rodam
+  em segundo plano dentro deles, nunca num serviço à parte sem justificativa medida (VI).
 
 ## Fluxo de Desenvolvimento
 
@@ -114,4 +136,4 @@ Versionamento semântico:
 Todo `plan.md` e toda revisão de implementação MUST verificar conformidade com os princípios
 I a VIII.
 
-**Version**: 1.0.0 | **Ratified**: 2026-11-05 | **Last Amended**: 2026-11-05
+**Version**: 1.1.0 | **Ratified**: 2026-11-05 | **Last Amended**: 2026-11-08
