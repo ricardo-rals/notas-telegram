@@ -72,6 +72,29 @@ que aparece na barra lateral com a contagem e filtra junto com a categoria e a b
 mensagem atualiza as tags. Na categoria **Documento**, os botões separam PDF, planilhas, textos,
 apresentações, compactados e imagens.
 
+## Iniciar tudo de uma vez
+
+Dois cliques em `iniciar.cmd` sobem o bot e o painel, cada um numa janela minimizada. Para subir
+sozinho quando você entrar no Windows:
+
+```powershell
+uv run python -m notas.servico instalar      # cria o atalho na pasta Inicializar
+uv run python -m notas.servico desinstalar   # remove
+```
+
+## Backup
+
+Com o painel aberto, o banco é copiado uma vez por dia para `backups` (ao lado do banco, fora do
+repositório), guardando os 7 mais recentes (`BACKUP_DIR`, `BACKUP_MANTER`). A página **Importar**
+mostra o último backup e avisa se estiver atrasado. Backup na hora:
+
+```powershell
+uv run --env-file .env python -m notas.backup
+```
+
+Para restaurar: feche o bot e o painel e copie um `notas-AAAAMMDD-HHMMSS.db` no lugar de `notas.db`.
+A pasta `data/media` não entra no backup diário.
+
 ## Testes
 
 ```powershell

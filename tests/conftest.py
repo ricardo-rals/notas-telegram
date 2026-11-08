@@ -24,6 +24,7 @@ def config_teste(tmp_path) -> Config:
         media_dir=tmp_path / "media",
         painel_port=8000,
         previas_links=False,  # nenhum teste acessa a rede pela thread de prévias
+        backup_dir=tmp_path / "backups",
     )
 
 

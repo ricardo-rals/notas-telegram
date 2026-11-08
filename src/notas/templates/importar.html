@@ -40,5 +40,20 @@
   <input id="pasta" name="pasta" required placeholder="C:\Users\...\ChatExport_2026-11-05">
   <button type="submit">Importar</button>
 </form>
+
+<h2>Backup</h2>
+<section class="backup">
+  {%- if backup.ultimo %}
+  <p>Último backup: {{ backup.ultimo.strftime('%d/%m/%Y %H:%M') }}</p>
+  {%- else %}
+  <p>Nenhum backup ainda.</p>
+  {%- endif %}
+  {%- if backup.atrasado %}
+  <p class="aviso">Backup atrasado: o painel faz uma cópia por dia enquanto está aberto.</p>
+  {%- endif %}
+  {%- if backup.erro %}<p class="erro">Último erro de backup: {{ backup.erro }}</p>{% endif %}
+  <p class="fraco">Pasta: <code>{{ backup.pasta }}</code> · para restaurar, feche o bot e o painel e copie um
+  backup no lugar do arquivo do banco.</p>
+</section>
 </main>
 {% endblock %}

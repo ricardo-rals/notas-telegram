@@ -22,7 +22,7 @@ def nota(mid, **extra):
 
 @pytest.fixture
 def cliente(engine, config_teste, sessao):
-    return TestClient(criar_app(config_teste, engine), base_url=BASE_URL)
+    return TestClient(criar_app(config_teste, engine, iniciar_backup=lambda *a: None), base_url=BASE_URL)
 
 
 def test_lista(cliente, sessao):
@@ -550,3 +550,32 @@ def test_grupos_de_documento_no_painel(cliente, sessao):
     assert re.findall(r">([^<]+)</a>", nav) == ["Todos", "PDF (2)", "Planilhas (1)", "Compactados (1)"]
     html = cliente.get("/?tipo=documento&grupo=pdf").text
     assert "doc a.pdf" in html and "doc c.xlsx" not in html
+
+
+# --- 006: backup na página Importar ----------------------------------------------------
+def test_thread_de_backup_iniciada(engine, config_teste):
+    chamadas = []
+    criar_app(config_teste, engine, iniciar_backup=lambda *a: chamadas.append(a))
+    assert len(chamadas) == 1
+
+
+def test_importar_mostra_estado_do_backup(cliente, config_teste):
+    from datetime import datetime, timedelta
+
+    from notas import backup
+    assert "Nenhum backup ainda" in cliente.get("/importar").text
+    config_teste.backup_dir.mkdir(parents=True)
+    recente = datetime.now() - timedelta(hours=2)
+    (config_teste.backup_dir / f"notas-{recente:%Y%m%d-%H%M%S}.db").write_bytes(b"x")
+    html = cliente.get("/importar").text
+    assert f"Último backup: {recente:%d/%m/%Y %H:%M}" in html and "atrasado" not in html
+    for p in config_teste.backup_dir.iterdir():
+        p.unlink()
+    velho = datetime.now() - timedelta(hours=50)
+    (config_teste.backup_dir / f"notas-{velho:%Y%m%d-%H%M%S}.db").write_bytes(b"x")
+    assert "Backup atrasado" in cliente.get("/importar").text
+    backup.ULTIMO_ERRO["mensagem"] = "PermissionError: negado"
+    try:
+        assert "PermissionError: negado" in cliente.get("/importar").text
+    finally:
+        backup.ULTIMO_ERRO["mensagem"] = None

@@ -4,7 +4,7 @@ import logging
 import math
 import re
 import threading
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from urllib.parse import urlencode
 
@@ -18,6 +18,7 @@ from sqlalchemy.orm import Session
 from notas.config import Config, ErroConfig, carregar
 from notas.db import TIPOS, Nota, criar_engine, exigir_revisao_atual
 from notas.importacao import encontrar_exportacoes, executar
+from notas import backup
 from notas.previas import iniciar_thread
 from notas.regras import GRUPOS_DOCUMENTO
 from notas.repositorio import (
@@ -103,7 +104,8 @@ def data_local(iso: str) -> str:
         return iso
 
 
-def criar_app(cfg: Config, engine: Engine, iniciar_previas=iniciar_thread, pastas_exportacao=None) -> FastAPI:
+def criar_app(cfg: Config, engine: Engine, iniciar_previas=iniciar_thread, pastas_exportacao=None,
+              iniciar_backup=backup.iniciar_thread) -> FastAPI:
     app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
     hosts = {f"127.0.0.1:{cfg.painel_port}", f"localhost:{cfg.painel_port}"}
     origens = {f"http://{h}" for h in hosts}
@@ -186,8 +188,13 @@ def criar_app(cfg: Config, engine: Engine, iniciar_previas=iniciar_thread, pasta
             imp = ultima_importacao(sessao)
             sessao.expunge_all()
         exportacoes = encontrar_exportacoes(pastas_exportacao, cfg.chat_id)
-        return templates.TemplateResponse(
-            request, "importar.html", {"imp": imp, "aviso": None, "exportacoes": exportacoes})
+        ultimo = backup.ultimo_backup(cfg.backup_dir) if cfg.backup_dir else None
+        estado_backup = {
+            "ultimo": ultimo, "pasta": cfg.backup_dir, "erro": backup.ULTIMO_ERRO["mensagem"],
+            "atrasado": ultimo is None or datetime.now() - ultimo > timedelta(hours=48),
+        }
+        return templates.TemplateResponse(request, "importar.html", {
+            "imp": imp, "aviso": None, "exportacoes": exportacoes, "backup": estado_backup})
 
     @app.get("/importar/status")
     def status_importacao(request: Request):
@@ -229,6 +236,8 @@ def criar_app(cfg: Config, engine: Engine, iniciar_previas=iniciar_thread, pasta
 
     if cfg.previas_links:
         iniciar_previas(engine, cfg.media_dir)
+    if cfg.backup_dir:
+        iniciar_backup(cfg.database_path, cfg.backup_dir, cfg.backup_manter)
 
     app.mount("/static", StaticFiles(directory=AQUI / "static"), name="static")
     app.mount("/media", StaticFiles(directory=cfg.media_dir, check_dir=False), name="media")

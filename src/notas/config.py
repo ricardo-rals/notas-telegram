@@ -21,6 +21,8 @@ class Config:
     painel_port: int
     token: str | None = None
     previas_links: bool = True  # busca título/miniatura dos links (Princípio I, item b)
+    backup_dir: Path | None = None  # None = "backups" ao lado do banco (006)
+    backup_manter: int = 7
 
 
 def _dentro(caminho: Path, pasta: Path) -> bool:
@@ -66,6 +68,13 @@ def carregar(exigir_token: bool = False, env: Mapping[str, str] = os.environ) ->
     if previas not in ("0", "1"):
         raise ErroConfig("PREVIAS_LINKS precisa ser 0 ou 1")
 
+    backup_dir = Path(valor("BACKUP_DIR") or database_path.parent / "backups")
+    if _dentro(backup_dir, RAIZ_REPO):
+        raise ErroConfig("BACKUP_DIR precisa ficar fora do repositório (Princípio IV)")
+    backup_manter = inteiro("BACKUP_MANTER", 7)
+    if backup_manter < 1:
+        raise ErroConfig("BACKUP_MANTER precisa ser pelo menos 1")
+
     return Config(
         chat_id=inteiro("ALLOWED_CHAT_ID"),
         user_id=inteiro("ALLOWED_USER_ID"),
@@ -74,4 +83,6 @@ def carregar(exigir_token: bool = False, env: Mapping[str, str] = os.environ) ->
         painel_port=inteiro("PAINEL_PORT", 8000),
         token=token,
         previas_links=previas == "1",
+        backup_dir=backup_dir,
+        backup_manter=backup_manter,
     )
