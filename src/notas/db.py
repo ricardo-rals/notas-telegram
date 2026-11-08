@@ -45,13 +45,36 @@ class Nota(Base):
     criada_em: Mapped[str] = mapped_column(String, default=agora)
 
 
-class NotaSite(Base):
-    """Site de uma nota de link. `site = ''` significa "Sem site identificado"."""
+class Link(Base):
+    """Um item por URL distinta de uma nota de link. `site = ''` = "Sem site identificado";
+    `url = ''` só no item sentinela de uma nota de link sem URL extraível."""
 
-    __tablename__ = "nota_site"
+    __tablename__ = "link"
 
-    nota_id: Mapped[int] = mapped_column(ForeignKey("nota.id", ondelete="CASCADE"), primary_key=True)
-    site: Mapped[str] = mapped_column(String, primary_key=True)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    nota_id: Mapped[int] = mapped_column(ForeignKey("nota.id", ondelete="CASCADE"))
+    posicao: Mapped[int]
+    url: Mapped[str]
+    site: Mapped[str]
+    data: Mapped[str]
+    autor: Mapped[str | None]
+
+
+class Previa(Base):
+    """Prévia de uma URL (título, descrição, miniatura), compartilhada por todos os itens."""
+
+    __tablename__ = "previa"
+
+    url: Mapped[str] = mapped_column(String, primary_key=True)
+    situacao: Mapped[str] = mapped_column(String, default="pendente")  # pendente | ok | indisponivel
+    titulo: Mapped[str | None]
+    descricao: Mapped[str | None]
+    imagem: Mapped[str | None]  # relativo a MEDIA_DIR
+    erro: Mapped[str | None]
+    definitiva: Mapped[int] = mapped_column(default=0)
+    tentativas: Mapped[int] = mapped_column(default=0)
+    buscada_em: Mapped[str | None]
+    tentar_depois_de: Mapped[str | None]
 
 
 class Importacao(Base):

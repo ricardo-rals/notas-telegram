@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 
 from notas.config import Config, ErroConfig, carregar
 from notas.db import agora, criar_engine, exigir_revisao_atual
-from notas.regras import classificar, deve_baixar, iso_utc, link_mensagem, normalizar_bot_api, sites_da_nota
+from notas.regras import classificar, deve_baixar, iso_utc, link_mensagem, normalizar_bot_api, itens_de_link
 from notas.repositorio import registrar_falha, salvar_ao_vivo
 
 log = logging.getLogger("notas.bot")
@@ -47,7 +47,7 @@ async def processar_mensagem(msg: dict, sessao: Session, cfg: Config, baixar: Ba
                 dados["arquivo_caminho"] = nome
             except Exception as e:
                 dados.update(situacao="falha", erro=f"download: {_erro(e)}")
-        salvar_ao_vivo(sessao, dados, sites_da_nota(m) if c.tipo == "link" else frozenset())
+        salvar_ao_vivo(sessao, dados, itens_de_link(m) if c.tipo == "link" else [])
     except Exception as e:
         sessao.rollback()
         registrar_falha(

@@ -20,6 +20,7 @@ class Config:
     media_dir: Path
     painel_port: int
     token: str | None = None
+    previas_links: bool = True  # busca título/miniatura dos links (Princípio I, item b)
 
 
 def _dentro(caminho: Path, pasta: Path) -> bool:
@@ -61,6 +62,10 @@ def carregar(exigir_token: bool = False, env: Mapping[str, str] = os.environ) ->
     if _dentro(media_dir, RAIZ_REPO) and not _dentro(media_dir, RAIZ_REPO / "data"):
         raise ErroConfig("MEDIA_DIR dentro do repositório precisa estar em data/ (ignorada pelo Git)")
 
+    previas = valor("PREVIAS_LINKS") or "1"
+    if previas not in ("0", "1"):
+        raise ErroConfig("PREVIAS_LINKS precisa ser 0 ou 1")
+
     return Config(
         chat_id=inteiro("ALLOWED_CHAT_ID"),
         user_id=inteiro("ALLOWED_USER_ID"),
@@ -68,4 +73,5 @@ def carregar(exigir_token: bool = False, env: Mapping[str, str] = os.environ) ->
         media_dir=media_dir,
         painel_port=inteiro("PAINEL_PORT", 8000),
         token=token,
+        previas_links=previas == "1",
     )

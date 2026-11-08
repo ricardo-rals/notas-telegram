@@ -116,12 +116,12 @@ def test_caminho_relativo_da_exportacao_nao_escapa(sessao, config_teste, tmp_pat
 
 
 # --- 002 US4 ------------------------------------------------------------------------
-def test_importacao_grava_sites(sessao, config_teste):
-    from notas.db import NotaSite
+def test_importacao_grava_itens(sessao, config_teste):
+    from notas.db import Link
 
     r = importar(FIXTURES / "exportacao_links", "terminal", sessao, config_teste)
     assert contagens(r) == (3, 0, 0, 0)
     linhas = sessao.execute(
-        select(Nota.message_id, NotaSite.site).join(NotaSite, NotaSite.nota_id == Nota.id)
+        select(Nota.message_id, Link.site).join(Link, Link.nota_id == Nota.id)
     ).all()
     assert sorted(linhas) == [(301, "facebook.com"), (302, "youtube.com")]

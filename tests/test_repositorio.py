@@ -136,9 +136,32 @@ def test_busca_com_10000_notas_em_menos_de_1s(sessao):
         assert time.perf_counter() - inicio < 1.0, (q, tipo)
 
 
-# --- 002 US1: contagem por tipo -------------------------------------------------------
-from notas.db import TIPOS  # noqa: E402
-from notas.repositorio import contar_por_tipo  # noqa: E402
+# --- 002/003: contagem por tipo -------------------------------------------------------
+import json  # noqa: E402
+
+from conftest import carregar_fixture  # noqa: E402
+from notas.db import TIPOS, Link  # noqa: E402
+from notas.regras import ItemLink, itens_de_link, normalizar_bot_api  # noqa: E402
+from notas.repositorio import (  # noqa: E402
+    buscar_links,
+    contar_por_tipo,
+    contar_sites,
+    links_das_notas,
+    reconstruir_links,
+    salvar_importada,
+)
+
+DATA = "2026-11-05T10:00:00+00:00"
+
+
+def item(pos, url, site, data=DATA, autor=None):
+    return ItemLink(pos, url, site, data, autor)
+
+
+def com_links(sessao, mid, sites, **extra):
+    """Nota de link com um item por site (url derivada do site)."""
+    itens = [item(i, f"https://{s or 'com.br'}/{mid}/{i}", s, extra.pop("data", DATA)) for i, s in enumerate(sites)]
+    salvar_ao_vivo(sessao, dados(mid, **({"tipo": "link"} | extra)), itens=itens)
 
 
 def test_contar_por_tipo(sessao):
@@ -146,162 +169,224 @@ def test_contar_por_tipo(sessao):
         salvar_ao_vivo(sessao, dados(i, tipo="foto"))
     for i in range(7, 10):
         salvar_ao_vivo(sessao, dados(i, tipo="audio"))
-    salvar_ao_vivo(sessao, dados(10, tipo="link", situacao="falha", erro="x"))
+    com_links(sessao, 10, ["a.com", "b.com", "a.com"], situacao="falha", erro="x")
     c = contar_por_tipo(sessao)
-    assert c == {t: 0 for t in TIPOS} | {"foto": 7, "audio": 3, "link": 1, "falha": 1, "todas": 11}
-    assert sum(c[t] for t in TIPOS) == c["todas"]  # SC-006
+    # a aba Link conta itens (3); as demais contam notas (FR-002)
+    assert c == {t: 0 for t in TIPOS} | {"foto": 7, "audio": 3, "link": 3, "falha": 1, "todas": 11}
 
 
-# --- 002 US2: sites -------------------------------------------------------------------
-from notas.db import NotaSite  # noqa: E402
-from notas.repositorio import buscar, contar_sites  # noqa: E402
-
-
-def com_sites(sessao, mid, sites, **extra):
-    salvar_ao_vivo(sessao, dados(mid, **({"tipo": "link"} | extra)), sites=frozenset(sites))
-    if extra.get("tipo", "link") != "link":  # linha "suja" de nota não-link: não pode contar
-        nid = sessao.scalar(select(Nota.id).where(Nota.message_id == mid))
-        sessao.add_all(NotaSite(nota_id=nid, site=s) for s in sites)
-        sessao.commit()
+# --- 003 US1: itens de link -------------------------------------------------------------
+def itens_por_mid(sessao):
+    sessao.expire_all()
+    linhas = sessao.execute(
+        select(Nota.message_id, Link.url, Link.site).join(Link, Link.nota_id == Nota.id).order_by(Link.posicao)
+    ).all()
+    r = {}
+    for mid, url, site in linhas:
+        r.setdefault(mid, []).append((url, site))
+    return r
 
 
 def popular_sites(sessao):
     for mid in (1, 2, 3):
-        com_sites(sessao, mid, ["youtube.com"], texto=f"vídeo {mid}")
-    com_sites(sessao, 4, ["instagram.com", "ac.com"], texto="dois sites")
-    com_sites(sessao, 5, [""], texto="sem site")
-    com_sites(sessao, 6, ["youtube.com"], tipo="foto", texto="foto com url")
+        com_links(sessao, mid, ["youtube.com"], texto=f"vídeo {mid}")
+    com_links(sessao, 4, ["instagram.com", "ac.com", "youtube.com"], texto="três sites")
+    com_links(sessao, 5, [""], texto="sem site")
 
 
-def test_contar_sites(sessao):
+def test_contar_sites_conta_itens(sessao):
     popular_sites(sessao)
-    assert contar_sites(sessao) == [("youtube.com", 3), ("ac.com", 1), ("instagram.com", 1), ("", 1)]
+    assert contar_sites(sessao) == [("youtube.com", 4), ("ac.com", 1), ("instagram.com", 1), ("", 1)]
 
 
-def test_buscar_por_site(sessao):
+def test_salvar_grava_troca_e_remove_itens(sessao):
+    salvar_ao_vivo(sessao, dados(1, tipo="link"), itens=[item(0, "https://a.com", "a.com"), item(1, "https://b.com", "b.com")])
+    assert itens_por_mid(sessao)[1] == [("https://a.com", "a.com"), ("https://b.com", "b.com")]
+    salvar_ao_vivo(sessao, dados(1, tipo="link"), itens=[item(0, "https://b.com", "b.com")])  # edição (FR-004)
+    assert itens_por_mid(sessao)[1] == [("https://b.com", "b.com")]
+    salvar_ao_vivo(sessao, dados(1, tipo="texto"))  # deixou de ser link
+    assert 1 not in itens_por_mid(sessao)
+    salvar_ao_vivo(sessao, dados(2, tipo="link"))  # link sem itens → sentinela
+    assert itens_por_mid(sessao)[2] == [("", "")]
+    salvar_ao_vivo(sessao, dados(3, tipo="foto"), itens=[item(0, "https://c.com", "c.com")])
+    assert 3 not in itens_por_mid(sessao)
+
+
+def test_salvar_importada_so_ao_criar_e_falha_mantem(sessao):
+    assert salvar_importada(sessao, dados(1, tipo="link"), itens=[item(0, "https://c.com", "c.com")])
+    assert not salvar_importada(sessao, dados(1, tipo="link"), itens=[item(0, "https://d.com", "d.com")])
+    registrar_falha(sessao, chat_id=-1001234567890, message_id=1, erro="x", bruto=None,
+                    enviada_em=DATA, link="l")
+    assert itens_por_mid(sessao)[1] == [("https://c.com", "c.com")]
+
+
+def test_buscar_links(sessao):
     popular_sites(sessao)
-    textos = lambda **kw: sorted(n.texto for n in buscar(sessao, **kw)[0])  # noqa: E731
-    assert textos(tipo="link", site="youtube.com") == ["vídeo 1", "vídeo 2", "vídeo 3"]
-    assert textos(tipo="link", site="") == ["sem site"]
-    assert textos(tipo="link", site="instagram.com") == ["dois sites"]
-    assert buscar(sessao, tipo="link", site="nao-existe.com") == ([], 0)
-    assert textos(tipo="link", site="youtube.com", q="vídeo 2") == ["vídeo 2"]
-    assert textos(tipo="foto", site="instagram.com") == ["foto com url"]  # site ignorado fora de link
+    com_links(sessao, 6, ["youtube.com"], texto="mais novo", data="2026-12-01T00:00:00+00:00")
+    pagina, total = buscar_links(sessao)
+    assert total == 8 and pagina[0][1].texto == "mais novo"  # ordem por data do item (FR-017)
+    assert all(previa.situacao == "pendente" for _, _, previa in pagina)  # criada junto com o link (003)
+    textos = lambda **kw: sorted(n.texto for _, n, _ in buscar_links(sessao, **kw)[0])  # noqa: E731
+    assert textos(site="youtube.com") == ["mais novo", "três sites", "vídeo 1", "vídeo 2", "vídeo 3"]
+    assert textos(site="") == ["sem site"]
+    assert textos(site="youtube.com", q="vídeo 2") == ["vídeo 2"]
+    assert buscar_links(sessao, site="nao-existe.com") == ([], 0)
 
 
-# --- 002 US3: reclassificar notas antigas ---------------------------------------------
-import json  # noqa: E402
+def test_buscar_links_paginacao(sessao):
+    com_links(sessao, 1, [f"s{i}.com" for i in range(52)])
+    assert len(buscar_links(sessao)[0]) == 50 and buscar_links(sessao)[1] == 52
+    assert len(buscar_links(sessao, pagina=2)[0]) == 2
 
-from conftest import carregar_fixture  # noqa: E402
-from notas.repositorio import reclassificar_sites  # noqa: E402
+
+def test_links_das_notas(sessao):
+    com_links(sessao, 1, ["a.com", "b.com"])
+    com_links(sessao, 2, ["c.com"])
+    ids = list(sessao.scalars(select(Nota.id).order_by(Nota.message_id)))
+    r = links_das_notas(sessao, ids)
+    assert [lk.site for lk, _ in r[ids[0]]] == ["a.com", "b.com"]
+    assert [lk.site for lk, _ in r[ids[1]]] == ["c.com"]
+    assert links_das_notas(sessao, []) == {}
 
 
 def bruto_bot(nome):
     return json.dumps(carregar_fixture(f"bot_api/{nome}.json"), ensure_ascii=False)
 
 
-def sites_por_mid(sessao):
-    linhas = sessao.execute(select(Nota.message_id, NotaSite.site).join(NotaSite, NotaSite.nota_id == Nota.id)).all()
-    r = {}
-    for mid, s in linhas:
-        r.setdefault(mid, set()).add(s)
-    return r
-
-
 def snapshot(sessao):
     return [tuple(r) for r in sessao.execute(select(Nota.__table__).order_by(Nota.id)).all()]
 
 
-def test_reclassificar_sites(sessao, engine):
+def test_reconstruir_links(sessao, engine):
     exp = carregar_fixture("exportacao_links/result.json")["messages"][0]
-    salvar_ao_vivo(sessao, dados(1, tipo="link", bruto=bruto_bot("link_varios_sites")))
+    salvar_ao_vivo(sessao, dados(60, tipo="link", bruto=bruto_bot("whatsapp_9_links")))
     salvar_ao_vivo(sessao, dados(2, tipo="link", bruto=bruto_bot("link_idn")))
     salvar_ao_vivo(sessao, dados(3, tipo="link", bruto=None, texto="https://m.x.com.br"))
     salvar_ao_vivo(sessao, dados(4, tipo="link", bruto="{", texto="ver https://www.y.com"))
     salvar_ao_vivo(sessao, dados(5, tipo="foto", texto="https://z.com"))
-    salvar_ao_vivo(sessao, dados(6, tipo="link", bruto=bruto_bot("link_text_link")))
-    from notas.repositorio import salvar_importada
-
-    salvar_importada(sessao, dados(7, tipo="link", bruto=json.dumps(exp)) | {})
-    # linha errada de antes deve ser corrigida
-    nid6 = sessao.scalar(select(Nota.id).where(Nota.message_id == 6))
-    sessao.add(NotaSite(nota_id=nid6, site="errado.com"))
-    sessao.commit()
+    salvar_importada(sessao, dados(7, tipo="link", bruto=json.dumps(exp)))
     antes = snapshot(sessao)
 
     with engine.begin() as conn:
-        assert reclassificar_sites(conn) == 6
-    sessao.expire_all()
-    esperado = {
-        1: {"youtube.com", "instagram.com"}, 2: {"bücher.de"}, 3: {"x.com.br"}, 4: {"y.com"},
-        6: {"exemplo.com"}, 7: {"facebook.com"},
-    }
-    assert sites_por_mid(sessao) == esperado
+        assert reconstruir_links(conn) == 5
+    r = itens_por_mid(sessao)
+    assert [s for _, s in r[60]] == ["i384100.net"] + ["instagram.com"] * 8
+    assert r[2] == [("https://xn--bcher-kva.de/", "bücher.de")]
+    assert r[3] == [("https://m.x.com.br", "x.com.br")]
+    assert r[4] == [("https://www.y.com", "y.com")]
+    assert 5 not in r
+    assert r[7] == [("https://m.facebook.com/evento", "facebook.com")]
+    autores = set(sessao.scalars(select(Link.autor).join(Nota).where(Nota.message_id == 60)))
+    assert autores == {"Usuario"}
     with engine.begin() as conn:
-        reclassificar_sites(conn)
-    assert sites_por_mid(sessao) == esperado  # FR-011
-    assert snapshot(sessao) == antes  # FR-013
+        reconstruir_links(conn)
+    assert itens_por_mid(sessao) == r  # FR-015 idempotente
+    assert snapshot(sessao) == antes  # nota não muda
 
 
-# --- 002 US4: gravação dos sites junto com a nota -------------------------------------
-def sites_de(sessao, mid):
-    return sites_por_mid(sessao).get(mid, set())
+def test_itens_de_link_da_mensagem_de_exemplo_gravam_9(sessao):
+    m = normalizar_bot_api(carregar_fixture("bot_api/whatsapp_9_links.json"))
+    salvar_ao_vivo(sessao, dados(60, tipo="link"), itens=itens_de_link(m))
+    assert contar_sites(sessao) == [("instagram.com", 8), ("i384100.net", 1)]
 
 
-def test_salvar_ao_vivo_grava_e_troca_sites(sessao):
-    salvar_ao_vivo(sessao, dados(1, tipo="link"), sites=frozenset({"a.com"}))
-    assert sites_de(sessao, 1) == {"a.com"}
-    salvar_ao_vivo(sessao, dados(1, tipo="link"), sites=frozenset({"b.com"}))  # edição
-    assert sites_de(sessao, 1) == {"b.com"}
-    salvar_ao_vivo(sessao, dados(1, tipo="texto"), sites=frozenset())  # deixou de ser link
-    assert sites_de(sessao, 1) == set()
-    salvar_ao_vivo(sessao, dados(2, tipo="link"))  # link sem sites informados nunca fica fora
-    assert sites_de(sessao, 2) == {""}
-    salvar_ao_vivo(sessao, dados(3, tipo="foto"), sites=frozenset({"c.com"}))  # só link tem site
-    assert sites_de(sessao, 3) == set()
+# --- 003 US2: fila de prévias --------------------------------------------------------
+from datetime import UTC, datetime, timedelta  # noqa: E402
+from types import SimpleNamespace  # noqa: E402
+
+from notas.db import Previa  # noqa: E402
+from notas.repositorio import proximas_previas, registrar_previa  # noqa: E402
+
+AGORA = datetime(2026, 11, 6, 12, 0, tzinfo=UTC)
 
 
-def test_salvar_importada_grava_sites_so_ao_criar(sessao):
-    from notas.repositorio import salvar_importada
-
-    assert salvar_importada(sessao, dados(1, tipo="link"), sites=frozenset({"c.com"}))
-    assert not salvar_importada(sessao, dados(1, tipo="link"), sites=frozenset({"d.com"}))
-    assert sites_de(sessao, 1) == {"c.com"}
+def resultado(situacao="indisponivel", definitiva=False, **kw):
+    base = dict(titulo=None, descricao=None, imagem=None, erro=None if situacao == "ok" else "falhou")
+    return SimpleNamespace(situacao=situacao, definitiva=definitiva, **(base | kw))
 
 
-def test_registrar_falha_mantem_sites(sessao):
-    salvar_ao_vivo(sessao, dados(1, tipo="link"), sites=frozenset({"a.com"}))
-    registrar_falha(sessao, chat_id=-1001234567890, message_id=1, erro="x", bruto=None,
-                    enviada_em="2026-11-05T10:00:00+00:00", link="l")
-    assert sites_de(sessao, 1) == {"a.com"}
+def test_links_criam_previa_pendente_uma_por_url(sessao):
+    com_links(sessao, 1, ["a.com", "b.com"])
+    salvar_ao_vivo(sessao, dados(2, tipo="link"), itens=[item(0, "https://a.com/1/0", "a.com")])  # mesma URL
+    salvar_ao_vivo(sessao, dados(3, tipo="link"))  # sentinela: sem prévia
+    urls = sorted(sessao.scalars(select(Previa.url)))
+    assert urls == ["https://a.com/1/0", "https://b.com/1/1"]
+    assert set(sessao.scalars(select(Previa.situacao))) == {"pendente"}
 
 
-# --- 002 Polish: desempenho (SC-003, SC-004) ------------------------------------------
+def test_fila_e_recuo(sessao):
+    com_links(sessao, 1, ["a.com"])
+    url = "https://a.com/1/0"
+    assert proximas_previas(sessao, AGORA) == [url]
+    esperas = []
+    for _ in range(5):
+        registrar_previa(sessao, url, resultado(), AGORA)
+        p = sessao.get(Previa, url)
+        sessao.refresh(p)
+        esperas.append(datetime.fromisoformat(p.tentar_depois_de) - AGORA)
+        assert proximas_previas(sessao, AGORA) == []
+        assert proximas_previas(sessao, AGORA + esperas[-1]) == [url]
+    h = timedelta(hours=1)
+    assert esperas == [h, 6 * h, 24 * h, 7 * 24 * h, 7 * 24 * h] and p.tentativas == 5
+
+
+def test_registrar_ok_e_definitiva(sessao):
+    com_links(sessao, 1, ["a.com", "b.com"])
+    registrar_previa(sessao, "https://a.com/1/0", resultado("ok", titulo="T", descricao="D", imagem="previas/x.png"), AGORA)
+    registrar_previa(sessao, "https://b.com/1/1", resultado(definitiva=True, erro="endereço local"), AGORA)
+    a, b = sessao.get(Previa, "https://a.com/1/0"), sessao.get(Previa, "https://b.com/1/1")
+    assert (a.situacao, a.titulo, a.descricao, a.imagem, a.erro) == ("ok", "T", "D", "previas/x.png", None)
+    assert (b.situacao, b.definitiva, b.erro) == ("indisponivel", 1, "endereço local")
+    assert proximas_previas(sessao, AGORA + timedelta(days=365)) == []
+
+
+def test_busca_na_aba_link_casa_titulo_da_previa(sessao):
+    com_links(sessao, 1, ["a.com"], texto="sem palavra")
+    registrar_previa(sessao, "https://a.com/1/0", resultado("ok", titulo="Receita de Pão"), AGORA)
+    assert buscar_links(sessao, q="pao")[1] == 1
+
+
 @pytest.mark.lento
-def test_abas_sites_e_reclassificacao_com_10000_notas(sessao, engine):
+def test_aba_link_com_10000_notas_em_menos_de_1s(sessao, engine):
+    """SC-005 da 003: 10.000 notas, 2.500 de link com 2 URLs (5.000 itens em 200 sites), metade das prévias ok."""
     import time
 
     from sqlalchemy import insert as insert_core
 
-    base = carregar_fixture("bot_api/link_entidade.json")
-    linhas = []
-    for i in range(1, 10_001):
-        url = f"https://www.site{i % 200}.com.br/{i}"
-        bruto = json.dumps(base | {"message_id": i, "text": f"ver {url}",
-                                   "entities": [{"type": "url", "offset": 4, "length": len(url)}]})
-        linhas.append(dados(mid=i, texto=f"ver {url} mercado", tipo="link" if i % 2 else "texto", bruto=bruto,
-                            enviada_em=f"2026-01-01T00:00:00+00:00:{i:05d}") | {"origem": "ao_vivo", "criada_em": "x"})
-    sessao.execute(insert_core(Nota), linhas)
+    from notas.repositorio import buscar_links, contar_sites, links_das_notas, reconstruir_links
+    from sqlalchemy import text
+
+    notas = [
+        dados(mid=i, texto=f"nota {i} receita" if i % 3 else f"nota {i}", tipo="link" if i % 4 == 0 else "texto",
+              enviada_em=f"2026-01-01T00:00:{i % 60:02d}+00:00") | {"origem": "ao_vivo", "criada_em": "x"}
+        for i in range(1, 10_001)
+    ]
+    sessao.execute(insert_core(Nota), notas)
+    ids = dict(sessao.execute(text("SELECT message_id, id FROM nota WHERE tipo = 'link'")).all())
+    links = [
+        {"nota_id": nid, "posicao": p, "url": f"https://s{(mid + p) % 200}.com/{mid}/{p}",
+         "site": f"s{(mid + p) % 200}.com", "data": "2026-01-01T00:00:00+00:00", "autor": None}
+        for mid, nid in ids.items() for p in (0, 1)
+    ]
+    sessao.execute(insert_core(Link), links)
+    sessao.execute(insert_core(Previa), [
+        {"url": lk["url"], "situacao": "ok" if i % 2 else "pendente", "titulo": f"Título {i}" if i % 2 else None}
+        for i, lk in enumerate(links)
+    ])
     sessao.commit()
-
-    inicio = time.perf_counter()
-    with engine.begin() as conn:
-        assert reclassificar_sites(conn) == 5_000
-    assert time.perf_counter() - inicio < 60  # SC-004
-
-    for f in (lambda: contar_por_tipo(sessao), lambda: contar_sites(sessao),
-              lambda: buscar(sessao, tipo="link", site="site7.com.br", q="mercado")):
+    medir = []
+    for nome, f in [
+        ("contar_por_tipo", lambda: contar_por_tipo(sessao)),
+        ("contar_sites", lambda: contar_sites(sessao)),
+        ("buscar_links site+q", lambda: buscar_links(sessao, site="s7.com", q="receita", pagina=1)),
+        ("buscar_links titulo", lambda: buscar_links(sessao, q="titulo", pagina=3)),
+        ("buscar+links_das_notas", lambda: links_das_notas(sessao, [n.id for n in buscar(sessao, pagina=2)[0]])),
+    ]:
         inicio = time.perf_counter()
         f()
-        assert time.perf_counter() - inicio < 1.0  # SC-003
-    assert len(contar_sites(sessao)) == 100  # links só nos ímpares → 100 dos 200 sites
+        medir.append((nome, time.perf_counter() - inicio))
+    assert all(t < 1.0 for _, t in medir), medir
+    with engine.begin() as conn:
+        inicio = time.perf_counter()
+        reconstruir_links(conn)
+        assert time.perf_counter() - inicio < 60

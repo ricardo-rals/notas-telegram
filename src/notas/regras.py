@@ -5,6 +5,7 @@ MensagemNormalizada; `classificar` é a mesma para as duas (FR-018).
 """
 
 import ipaddress
+from bisect import bisect_right
 import mimetypes
 import re
 from dataclasses import dataclass
@@ -38,6 +39,7 @@ class MensagemNormalizada:
     localizacao: tuple[float, float] | None = None
     contato: tuple[str, str] | None = None
     urls: tuple[str, ...] = ()
+    posicoes: tuple[int, ...] = ()  # índice de cada URL no texto, paralelo a urls
 
 
 @dataclass(frozen=True)
@@ -66,24 +68,37 @@ def _tem_url(texto: str, entidades: list | None) -> bool:
 FIM_URL = ".,;:!?)]}>'\""
 
 
-def _urls(texto: str, entidades: list | None) -> tuple[str, ...]:
-    """URLs na ordem, sem repetir. Serve às duas fontes: a Bot API marca `url` por offset/length
-    (em UTF-16) e `text_link` com `url`; a exportação marca `link` com `text` e `text_link` com `href`."""
+def _urls(texto: str, entidades: list | None) -> tuple[tuple[str, ...], tuple[int, ...]]:
+    """URLs na ordem, sem repetir, e a posição (índice de caractere no texto) de cada uma.
+    Serve às duas fontes: a Bot API marca `url`/`text_link` por offset/length (em UTF-16); a
+    exportação marca `link` com `text` e `text_link` com `href`, sem offset (a posição é a soma
+    dos trechos anteriores)."""
+    achadas: list[tuple[str, int]] = []
     if entidades is None:
-        achadas = [u.rstrip(FIM_URL) for u in URL.findall(texto)]
+        achadas = [(m.group().rstrip(FIM_URL), m.start()) for m in URL.finditer(texto)]
     else:
         utf16 = texto.encode("utf-16-le")
-        achadas = []
+        corrido = 0  # exportação: posição acumulada dos trechos
         for e in entidades:
             tipo = e.get("type")
+            if "offset" in e:
+                pos = len(utf16[: e["offset"] * 2].decode("utf-16-le", errors="ignore"))
+            else:
+                pos = corrido
+                corrido += len(e.get("text", ""))
             if tipo == "text_link":
-                achadas.append(e.get("url") or e.get("href") or "")
+                achadas.append((e.get("url") or e.get("href") or "", pos))
             elif tipo == "url" and "offset" in e:
                 ini, fim = e["offset"] * 2, (e["offset"] + e["length"]) * 2
-                achadas.append(utf16[ini:fim].decode("utf-16-le", errors="ignore"))
+                achadas.append((utf16[ini:fim].decode("utf-16-le", errors="ignore"), pos))
             elif tipo in ("url", "link"):
-                achadas.append(e.get("text", ""))
-    return tuple(dict.fromkeys(u.strip() for u in achadas if u.strip()))
+                achadas.append((e.get("text", ""), pos))
+    vistas: dict[str, int] = {}
+    for u, pos in achadas:
+        limpa = u.strip()
+        if limpa and limpa not in vistas:
+            vistas[limpa] = pos + (len(u) - len(u.lstrip()))
+    return tuple(vistas), tuple(vistas.values())
 
 
 def normalizar_bot_api(d: dict) -> MensagemNormalizada:
@@ -131,7 +146,7 @@ def normalizar_bot_api(d: dict) -> MensagemNormalizada:
         editada_em=iso_utc(d["edit_date"]) if d.get("edit_date") else None,
         texto=texto,
         tem_url=_tem_url(texto, entidades),
-        urls=_urls(texto, entidades),
+        **dict(zip(("urls", "posicoes"), _urls(texto, entidades))),
         **campos,
     )
 
@@ -229,7 +244,7 @@ def normalizar_exportacao(item: dict, chat_id: int) -> MensagemNormalizada:
         editada_em=iso_utc(item["edited_unixtime"]) if item.get("edited_unixtime") else None,
         texto=texto,
         tem_url=_tem_url(texto, item.get("text_entities") or None),
-        urls=_urls(texto, item.get("text_entities") or None),
+        **dict(zip(("urls", "posicoes"), _urls(texto, item.get("text_entities") or None))),
         **campos,
     )
 
@@ -273,16 +288,62 @@ def site(url: str) -> str | None:
         return None
 
 
-def _sites(urls) -> frozenset[str]:
-    achados = frozenset(s for s in map(site, urls) if s)
-    return achados or frozenset({SEM_SITE})
+# --- Itens de link e linhas do WhatsApp (003) -----------------------------------------
+# "[12:40, 05/11/2026] Usuario: " ou "[05/11/2026, 12:40] Usuario: " (vírgula opcional)
+WHATSAPP = re.compile(
+    r"^\[(?:(?P<h1>\d{1,2}:\d{2}), (?P<d1>\d{1,2}/\d{1,2}/\d{4})"
+    r"|(?P<d2>\d{1,2}/\d{1,2}/\d{4}),? (?P<h2>\d{1,2}:\d{2}))\] (?P<autor>[^:\n]{1,60}): "
+)
 
 
-def sites_da_nota(m: MensagemNormalizada) -> frozenset[str]:
-    """Só para notas do tipo link; nunca vazio e nunca levanta (FR-007, FR-014)."""
-    return _sites(m.urls)
+@dataclass(frozen=True)
+class ItemLink:
+    posicao: int
+    url: str
+    site: str
+    data: str
+    autor: str | None
 
 
-def sites_do_texto(texto: str) -> frozenset[str]:
-    """Fallback para nota sem JSON original utilizável."""
-    return _sites(_urls(texto or "", None))
+def linhas_whatsapp(texto: str) -> list[tuple[int, str | None, str | None]]:
+    """Para cada linha: (índice de início, data ISO UTC, autor). Fora do padrão ou com data
+    impossível → (início, None, None). A hora da linha é a do fuso do computador."""
+    r, inicio = [], 0
+    for linha in texto.split("\n"):
+        data = autor = None
+        if m := WHATSAPP.match(linha):
+            try:
+                local = datetime.strptime(f"{m['d1'] or m['d2']} {m['h1'] or m['h2']}", "%d/%m/%Y %H:%M")
+                data = local.astimezone().astimezone(UTC).isoformat(timespec="seconds")
+                autor = m["autor"].strip()
+            except ValueError:
+                pass
+        r.append((inicio, data, autor))
+        inicio += len(linha) + 1
+    return r
+
+
+def _itens(urls, posicoes, texto: str, enviada_em: str) -> list[ItemLink]:
+    linhas = linhas_whatsapp(texto)
+    inicios = [ini for ini, _, _ in linhas]
+    itens = []
+    for i, (url, pos) in enumerate(zip(urls, posicoes)):
+        _, data, autor = linhas[max(bisect_right(inicios, pos) - 1, 0)]
+        itens.append(ItemLink(i, url, site(url) or SEM_SITE, data or enviada_em, autor if data else None))
+    return itens or [ItemLink(0, "", SEM_SITE, enviada_em, None)]
+
+
+def itens_de_link(m: MensagemNormalizada) -> list[ItemLink]:
+    """Um item por URL distinta, na ordem; nunca vazio (sentinela sem URL, FR-007 da 002)."""
+    try:
+        return _itens(m.urls, m.posicoes, m.texto, m.enviada_em)
+    except Exception:
+        return [ItemLink(0, "", SEM_SITE, m.enviada_em, None)]
+
+
+def itens_do_texto(texto: str, enviada_em: str) -> list[ItemLink]:
+    """Fallback para nota sem JSON original utilizável: só a regex sobre o texto."""
+    try:
+        return _itens(*_urls(texto or "", None), texto or "", enviada_em)
+    except Exception:
+        return [ItemLink(0, "", SEM_SITE, enviada_em, None)]

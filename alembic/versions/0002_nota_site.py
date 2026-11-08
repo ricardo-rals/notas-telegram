@@ -14,6 +14,8 @@ depends_on = None
 
 
 def upgrade() -> None:
+    # Só o esquema: a 0003 substitui esta tabela por `link` e reconstrói tudo a partir de
+    # `nota`, então preencher aqui seria trabalho jogado fora (research R1 da 003).
     op.execute(
         """
         CREATE TABLE nota_site (
@@ -24,11 +26,6 @@ def upgrade() -> None:
         """
     )
     op.execute("CREATE INDEX nota_site_site ON nota_site (site, nota_id)")
-    # Classifica as notas já guardadas (FR-011) com as mesmas regras da captura.
-    # ponytail: importa código da aplicação; se regras mudar a ponto de quebrar banco novo, congelar a função aqui
-    from notas.repositorio import reclassificar_sites
-
-    reclassificar_sites(op.get_bind())
 
 
 def downgrade() -> None:

@@ -8,22 +8,25 @@ from pathlib import Path
 from urllib.parse import urlencode
 
 from fastapi import FastAPI, Form, HTTPException, Query, Request
-from fastapi.responses import PlainTextResponse
+from fastapi.responses import FileResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import Engine
 from sqlalchemy.orm import Session
 
 from notas.config import Config, ErroConfig, carregar
-from notas.db import TIPOS, criar_engine, exigir_revisao_atual
+from notas.db import TIPOS, Nota, criar_engine, exigir_revisao_atual
 from notas.importacao import executar
+from notas.previas import iniciar_thread
 from notas.repositorio import (
     POR_PAGINA,
     ImportacaoEmAndamento,
     buscar,
+    buscar_links,
     contar_por_tipo,
     contar_sites,
     iniciar_importacao,
+    links_das_notas,
     ultima_importacao,
 )
 
@@ -34,6 +37,8 @@ ROTULOS = {
     "texto": "Texto", "link": "Link", "foto": "Foto", "audio": "Áudio", "video": "Vídeo",
     "documento": "Documento", "localizacao": "Localização", "contato": "Contato", "outro": "Outro",
 }
+CSP = ("default-src 'self'; img-src 'self'; style-src 'self' 'unsafe-inline'; "
+       "script-src 'self'; frame-ancestors 'none'")  # research R7 da 003: nada carregado de fora
 FILTROS = list(ROTULOS.items()) + [("falha", "Falhas")]
 ABAS = [("todas", "", "Todas")] + [(v, v, r) for v, r in FILTROS]  # (chave da contagem, tipo, rótulo)
 
@@ -52,7 +57,7 @@ def data_local(iso: str) -> str:
         return iso
 
 
-def criar_app(cfg: Config, engine: Engine) -> FastAPI:
+def criar_app(cfg: Config, engine: Engine, iniciar_previas=iniciar_thread) -> FastAPI:
     app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
     hosts = {f"127.0.0.1:{cfg.painel_port}", f"localhost:{cfg.painel_port}"}
     origens = {f"http://{h}" for h in hosts}
@@ -62,12 +67,15 @@ def criar_app(cfg: Config, engine: Engine) -> FastAPI:
     @app.middleware("http")
     async def so_local(request: Request, call_next):
         # Host errado = DNS rebinding; Origin de outro site num POST = CSRF.
-        if request.headers.get("host") not in hosts:
-            return PlainTextResponse("host não permitido", status_code=400)
         origem = request.headers.get("origin")
-        if request.method != "GET" and origem is not None and origem not in origens:
-            return PlainTextResponse("origem não permitida", status_code=403)
-        return await call_next(request)
+        if request.headers.get("host") not in hosts:
+            resposta = PlainTextResponse("host não permitido", status_code=400)
+        elif request.method != "GET" and origem is not None and origem not in origens:
+            resposta = PlainTextResponse("origem não permitida", status_code=403)
+        else:
+            resposta = await call_next(request)
+        resposta.headers["Content-Security-Policy"] = CSP
+        return resposta
 
     @app.get("/")
     def lista(request: Request, q: str = "", tipo: str = "", site: str = "", pagina: int = Query(1, ge=1)):
@@ -76,18 +84,25 @@ def criar_app(cfg: Config, engine: Engine) -> FastAPI:
         with Session(engine) as sessao:
             # site na URL: "-" = sem site identificado (''), vazio = todos; outro valor vai como veio (FR-015)
             filtro_site = {"": None, "-": ""}.get(site, site)
-            notas, total = buscar(sessao, q=q, tipo=tipo, pagina=pagina, site=filtro_site)
+            notas, links, links_por_nota, sites = [], [], {}, []
+            if tipo == "link":  # aba Link: um item por link (FR-002)
+                links, total = buscar_links(sessao, site=filtro_site, q=q, pagina=pagina)
+                sites = contar_sites(sessao)
+            else:
+                notas, total = buscar(sessao, q=q, tipo=tipo, pagina=pagina)
+                links_por_nota = links_das_notas(sessao, [n.id for n in notas if n.tipo == "link"])
             contagens = contar_por_tipo(sessao)
-            sites = contar_sites(sessao) if tipo == "link" else []
-        contexto = {
-            "notas": notas, "total": total, "q": q, "tipo": tipo, "pagina": pagina,
+            contexto = {
+            "notas": notas, "links": links, "links_por_nota": links_por_nota,
+            "total": total, "q": q, "tipo": tipo, "pagina": pagina,
             "por_pagina": POR_PAGINA, "paginas": max(1, math.ceil(total / POR_PAGINA)),
             "rotulos": ROTULOS, "abas": ABAS, "contagens": contagens, "href": href,
             "sites": sites, "site": site,
             "consulta": lambda p: href(q, tipo, site, pagina=p),
-        }
-        modelo = "_notas.html" if request.headers.get("hx-request") else "lista.html"
-        return templates.TemplateResponse(request, modelo, contexto)
+            }
+            modelo = "_notas.html" if request.headers.get("hx-request") else "lista.html"
+            # renderiza com a sessão aberta: os objetos ainda são lidos no template
+            return templates.TemplateResponse(request, modelo, contexto)
 
     def status(request: Request, codigo: int = 200, aviso: str | None = None):
         with Session(engine) as sessao:
@@ -128,6 +143,20 @@ def criar_app(cfg: Config, engine: Engine) -> FastAPI:
         # ponytail: uma thread por importação basta; FR-021 garante uma de cada vez.
         threading.Thread(target=rodar, daemon=True).start()
         return status(request, 202)
+
+    @app.get("/baixar/{nota_id}")
+    def baixar(request: Request, nota_id: int):
+        """Salva com o nome original (research R8 da 003); nada fora de MEDIA_DIR."""
+        with Session(engine) as sessao:
+            n = sessao.get(Nota, nota_id)
+        base = cfg.media_dir.resolve()
+        arquivo = (base / n.arquivo_caminho).resolve() if n and n.arquivo_caminho else None
+        if arquivo is None or not arquivo.is_relative_to(base) or not arquivo.is_file():
+            return templates.TemplateResponse(request, "nao_encontrado.html", {}, status_code=404)
+        return FileResponse(arquivo, filename=n.arquivo_nome or n.arquivo_caminho)
+
+    if cfg.previas_links:
+        iniciar_previas(engine, cfg.media_dir)
 
     app.mount("/static", StaticFiles(directory=AQUI / "static"), name="static")
     app.mount("/media", StaticFiles(directory=cfg.media_dir, check_dir=False), name="media")

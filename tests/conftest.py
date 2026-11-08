@@ -23,6 +23,7 @@ def config_teste(tmp_path) -> Config:
         database_path=tmp_path / "notas.db",
         media_dir=tmp_path / "media",
         painel_port=8000,
+        previas_links=False,  # nenhum teste acessa a rede pela thread de prévias
     )
 
 

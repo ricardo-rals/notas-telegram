@@ -119,7 +119,7 @@ def test_exportacao_arquivo_nao_incluido():
 
 
 # --- 002: sites dos links ------------------------------------------------------------
-from notas.regras import site, sites_da_nota, sites_do_texto  # noqa: E402
+from notas.regras import itens_de_link, site  # noqa: E402
 
 
 @pytest.mark.parametrize(
@@ -182,15 +182,72 @@ def test_urls_sem_entidades_e_repetidas():
     assert normalizar_bot_api(d).urls == ("https://a.com",)
 
 
-def test_sites_da_nota():
+def test_url_sem_site_vira_item_sem_site():
+    m = normalizar_bot_api(carregar_fixture("bot_api/texto.json") | {"text": "http://com.br https://a.com"})
+    assert [(i.url, i.site) for i in itens_de_link(m)] == [("http://com.br", ""), ("https://a.com", "a.com")]
+
+
+# --- 003: linhas do WhatsApp e itens de link -----------------------------------------
+from datetime import UTC, datetime  # noqa: E402
+
+from notas.regras import ItemLink, itens_de_link, itens_do_texto, linhas_whatsapp  # noqa: E402
+
+
+def utc_local(*args):
+    return datetime(*args).astimezone().astimezone(UTC).isoformat(timespec="seconds")
+
+
+def test_linhas_whatsapp_formatos():
+    esperado = (0, utc_local(2026, 11, 5, 12, 40), "Usuario")
+    assert linhas_whatsapp("[12:40, 05/11/2026] Usuario: x")[0] == esperado
+    assert linhas_whatsapp("[05/11/2026, 12:40] Usuario: x")[0] == esperado
+    assert linhas_whatsapp("[05/11/2026 12:40] Usuario: x")[0] == esperado
+    assert linhas_whatsapp("[12:40, 05/11/2026] Ana Maria: x")[0][2] == "Ana Maria"
+
+
+def test_linhas_whatsapp_invalidas_e_inicio():
+    texto = "[25:99, 31/02/2026] X: y\nsem prefixo\n[08:05, 01/01/2026] Bia: z"
+    assert linhas_whatsapp(texto) == [
+        (0, None, None), (25, None, None), (37, utc_local(2026, 1, 1, 8, 5), "Bia"),
+    ]
+
+
+def test_itens_mensagem_de_exemplo():
+    m = normalizar_bot_api(carregar_fixture("bot_api/whatsapp_9_links.json"))
+    itens = itens_de_link(m)
+    assert [i.posicao for i in itens] == list(range(9))
+    assert [i.site for i in itens] == ["i384100.net"] + ["instagram.com"] * 8
+    assert all(i.autor == "Usuario" for i in itens)
+    assert itens[0].data == utc_local(2026, 11, 5, 12, 40) and itens[8].data == utc_local(2026, 11, 5, 20, 41)
+    assert itens[0].url == "https://imp.i384100.net/cbUijS"
+
+
+def test_posicoes_com_emoji_e_text_link():
     m = normalizar_bot_api(carregar_fixture("bot_api/link_varios_sites.json"))
-    assert sites_da_nota(m) == frozenset({"youtube.com", "instagram.com"})
-    sem = normalizar_bot_api(carregar_fixture("bot_api/texto.json") | {"text": "http://com.br"})
-    assert sites_da_nota(sem) == frozenset({""})
-    misto = normalizar_bot_api(carregar_fixture("bot_api/texto.json") | {"text": "http://com.br https://a.com"})
-    assert sites_da_nota(misto) == frozenset({"a.com"})
+    assert [m.texto[p:p + 8] for p in m.posicoes] == ["https://"] * 3
+    t = normalizar_bot_api(carregar_fixture("bot_api/link_text_link.json"))
+    [item] = itens_de_link(t)
+    assert (item.url, item.data, item.autor) == ("https://exemplo.com/x", t.enviada_em, None)
 
 
-def test_sites_do_texto():
-    assert sites_do_texto("ver https://www.x.com.br e https://x.com.br/2") == frozenset({"x.com.br"})
-    assert sites_do_texto("") == frozenset({""})
+def test_itens_repetidos_mesma_linha_e_sentinela():
+    base = carregar_fixture("bot_api/texto.json")
+    m = normalizar_bot_api(base | {"text": "[10:00, 01/02/2026] Eu: https://a.com https://b.com https://a.com"})
+    itens = itens_de_link(m)
+    assert [i.url for i in itens] == ["https://a.com", "https://b.com"]
+    assert itens[0].data == itens[1].data == utc_local(2026, 2, 1, 10, 0)
+    vazio = normalizar_bot_api(base | {"text": "sem url nenhuma"})
+    assert itens_de_link(vazio) == [ItemLink(0, "", "", vazio.enviada_em, None)]
+
+
+def test_itens_do_texto():
+    itens = itens_do_texto("https://a.com\nhttps://b.com", "2026-01-01T00:00:00+00:00")
+    assert [(i.url, i.data) for i in itens] == [
+        ("https://a.com", "2026-01-01T00:00:00+00:00"), ("https://b.com", "2026-01-01T00:00:00+00:00"),
+    ]
+
+
+def test_posicoes_exportacao():
+    msgs = carregar_fixture("exportacao_links/result.json")["messages"]
+    m = normalizar_exportacao(msgs[1], CHAT)  # "vídeo " + link
+    assert m.posicoes == (6,)

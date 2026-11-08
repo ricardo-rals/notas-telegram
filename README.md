@@ -2,7 +2,8 @@
 
 Caderno local a partir de um grupo privado do Telegram. Tudo que você manda no grupo vira uma
 nota num SQLite no seu computador, com busca num painel em `http://127.0.0.1:8000`.
-Sem LLM, sem API paga; a rede só é usada para falar com o Telegram.
+Sem LLM, sem API paga; a rede só é usada para falar com o Telegram e, se ligado, para buscar a
+prévia dos links.
 
 ## Preparar o Telegram
 
@@ -41,6 +42,21 @@ que classifica as notas já guardadas. Para atualizar a lista de sufixos:
 uv lock --upgrade-package publicsuffixlist; uv sync
 ```
 
+## Cartões e prévias de links
+
+Cada link de uma mensagem vira um cartão próprio, mesmo quando a mensagem tem vários (por
+exemplo, um trecho colado do WhatsApp). Com `PREVIAS_LINKS=1` (padrão), o painel busca em
+segundo plano, uma vez por endereço, o título, a descrição e a miniatura que a página declara
+para compartilhamento. O que é acessado na rede: só a própria página do link e a imagem que
+ela indica, nunca endereços da rede local; a miniatura fica em `data/media/previas/`.
+Com `PREVIAS_LINKS=0`, nenhuma requisição é feita e o cartão mostra o endereço.
+
+Instagram e outros sites que exigem login costumam negar a prévia; o cartão então mostra
+"prévia indisponível" e continua abrindo o link. Fotos, áudios e documentos têm botão
+**Baixar**, que salva com o nome original.
+
+Depois de atualizar o código, rode `uv run --env-file .env alembic upgrade head`.
+
 ## Testes
 
 ```powershell
@@ -48,5 +64,6 @@ uv run pytest            # tudo
 uv run pytest -m "not lento"
 ```
 
-Roteiros de validação: [001](specs/001-captura-notas/quickstart.md) e [002](specs/002-categorias-sites/quickstart.md).
+Roteiros de validação: [001](specs/001-captura-notas/quickstart.md) e [002](specs/002-categorias-sites/quickstart.md) e
+[003](specs/003-cartoes-links-previa/quickstart.md).
 Princípios do projeto: [.specify/memory/constitution.md](.specify/memory/constitution.md).

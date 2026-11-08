@@ -1,0 +1,20 @@
+{#- Um item de link. Espera: lk (Link), previa (Previa ou None), nota (Nota). Nada daqui usa |safe (FR-010). -#}
+<article class="cartao link">
+  {%- if lk.url %}
+  <a class="previa" href="{{ lk.url }}" target="_blank" rel="noopener noreferrer">
+    {%- if previa and previa.situacao == 'ok' and previa.imagem %}
+    <img src="/media/{{ previa.imagem }}" alt="" loading="lazy">
+    {%- endif %}
+    <h3>{{ (previa.titulo if previa and previa.situacao == 'ok' and previa.titulo) or lk.url }}</h3>
+  </a>
+  {%- if previa and previa.situacao == 'ok' and previa.descricao %}
+  <p class="descricao">{{ previa.descricao }}</p>
+  {%- elif previa and previa.situacao == 'indisponivel' %}
+  <p class="descricao fraco">prévia indisponível</p>
+  {%- endif %}
+  {%- else %}
+  <p class="texto">{{ nota.texto }}</p>
+  {%- endif %}
+  <p class="meta">{{ lk.site or 'Sem site identificado' }} · {{ lk.data | data_local }}{% if lk.autor %} · {{ lk.autor }}{% endif %}
+    · <a href="{{ nota.link }}" target="_blank" rel="noopener">abrir no Telegram</a></p>
+</article>

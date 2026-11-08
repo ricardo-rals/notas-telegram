@@ -1,0 +1,128 @@
+/* Painel: escuro primeiro; o claro deriva dos mesmos tokens. Sem framework (Princípio VI). */
+:root {
+  color-scheme: dark;
+  --fundo: #0b0b0c;
+  --superficie: #141416;
+  --superficie-2: #1b1b1f;
+  --borda: #26262a;
+  --texto: #ededef;
+  --fraco: #9a9aa3;
+  --acento: #8aa4ff;
+  --falha: #f2555a;
+  --aviso: #e8b44c;
+  --raio: 12px;
+  --sombra: 0 1px 0 #ffffff08 inset, 0 8px 24px #00000040;
+}
+@media (prefers-color-scheme: light) {
+  :root {
+    color-scheme: light;
+    --fundo: #f7f7f8;
+    --superficie: #ffffff;
+    --superficie-2: #f1f1f3;
+    --borda: #e3e3e7;
+    --texto: #16161a;
+    --fraco: #5d5d66;
+    --acento: #3655d4;
+    --falha: #c8262c;
+    --aviso: #8a5a00;
+    --sombra: 0 1px 2px #0000000d, 0 8px 24px #0000000a;
+  }
+}
+
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0;
+  background: var(--fundo);
+  color: var(--texto);
+  font: 15px/1.55 "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+  font-feature-settings: "cv11", "ss01";
+  -webkit-font-smoothing: antialiased;
+}
+a { color: var(--acento); text-underline-offset: 2px; }
+:focus-visible { outline: 2px solid var(--acento); outline-offset: 2px; border-radius: 4px; }
+h1, h2, h3 { letter-spacing: -0.02em; font-weight: 600; line-height: 1.25; }
+h1 { font-size: 1.5rem; margin: 0 0 1rem; }
+code { font: .9em ui-monospace, "Cascadia Code", monospace; }
+.meta, .fraco { color: var(--fraco); font-size: .85em; }
+.texto, .previa h3, .erro, .meta { overflow-wrap: anywhere; }
+.texto { white-space: pre-wrap; margin: 0; }
+.erro { color: var(--falha); font: .85em/1.5 ui-monospace, monospace; white-space: pre-wrap; overflow-wrap: anywhere; }
+.aviso { color: var(--aviso); font-size: .9em; margin: .5rem 0 0; }
+
+/* Estrutura */
+.topo { display: flex; align-items: center; gap: 1.5rem; padding: .875rem 1.5rem; border-bottom: 1px solid var(--borda); }
+.topo .marca { font-weight: 650; letter-spacing: -0.02em; color: var(--texto); text-decoration: none; }
+.topo nav { display: flex; gap: 1rem; }
+.topo nav a { color: var(--fraco); text-decoration: none; }
+.topo nav a:hover, .topo nav a[aria-current] { color: var(--texto); }
+main { padding: 1.25rem 1.5rem 3rem; max-width: 1440px; margin: 0 auto; }
+
+/* Busca e abas */
+form.filtros { margin: 0 0 1rem; }
+form.filtros input[type=search] {
+  width: 100%; padding: .7rem .9rem; font: inherit; color: var(--texto);
+  background: var(--superficie); border: 1px solid var(--borda); border-radius: 10px;
+}
+form.filtros input[type=search]::placeholder { color: var(--fraco); }
+nav.abas { display: flex; flex-wrap: wrap; gap: .375rem; margin: 0 0 1rem; }
+nav.abas a {
+  padding: .3rem .7rem; border-radius: 999px; text-decoration: none; color: var(--fraco);
+  border: 1px solid var(--borda); font-size: .9em; transition: color .2s, background .2s, border-color .2s;
+}
+nav.abas a:hover { color: var(--texto); border-color: var(--fraco); }
+nav.abas a[aria-current] { color: var(--fundo); background: var(--texto); border-color: var(--texto); }
+nav.sites a { font-size: .85em; }
+
+/* Cartões */
+.lista { display: flex; flex-direction: column; gap: .75rem; max-width: 860px; }
+.grade { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: .75rem; }
+.lista .grade { margin-top: .75rem; }
+.cartao {
+  background: var(--superficie); border: 1px solid var(--borda); border-radius: var(--raio);
+  padding: 1rem; box-shadow: var(--sombra); min-width: 0;
+}
+.cartao.falha { border-color: color-mix(in srgb, var(--falha) 55%, var(--borda)); }
+.cartao .meta { margin: .75rem 0 0; }
+.cartao .acoes { margin: .75rem 0 0; display: flex; gap: .5rem; }
+.cartao.link { padding: 0; overflow: hidden; display: flex; flex-direction: column; }
+.cartao.link > :not(.previa) { margin-left: 1rem; margin-right: 1rem; }
+.cartao.link .meta { margin-bottom: 1rem; margin-top: auto; padding-top: .75rem; }
+.cartao.link > .texto { margin-top: 1rem; }
+.previa { color: var(--texto); text-decoration: none; display: block; }
+.previa img { width: 100%; aspect-ratio: 1.91/1; object-fit: cover; display: block; background: var(--superficie-2); }
+.previa h3 {
+  font-size: 1rem; margin: 1rem 1rem .25rem;
+  display: -webkit-box; -webkit-line-clamp: 3; line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden;
+}
+.previa:hover h3 { color: var(--acento); }
+.descricao { margin: 0; color: var(--fraco); font-size: .9em;
+  display: -webkit-box; -webkit-line-clamp: 2; line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+img.foto { max-width: 100%; max-height: 360px; border-radius: 8px; display: block; margin-top: .5rem; }
+audio { width: 100%; margin-top: .5rem; }
+.arquivo { display: inline-block; margin-top: .5rem; padding: .35rem .6rem; border-radius: 6px; background: var(--superficie-2); font-size: .9em; overflow-wrap: anywhere; }
+details summary { cursor: pointer; color: var(--fraco); font-size: .9em; }
+
+.botao, button {
+  display: inline-flex; align-items: center; gap: .4rem; padding: .45rem .9rem; border-radius: 8px;
+  font: 500 .9rem/1 inherit; text-decoration: none; cursor: pointer;
+  background: var(--superficie-2); color: var(--texto); border: 1px solid var(--borda); transition: border-color .2s;
+}
+.botao:hover, button:hover { border-color: var(--fraco); }
+button[type=submit] { background: var(--texto); color: var(--fundo); border-color: var(--texto); }
+
+.paginas { display: flex; justify-content: space-between; align-items: center; margin: 1.5rem 0; max-width: 860px; }
+.vazio { padding: 3rem 1rem; text-align: center; color: var(--fraco); }
+.vazio h1, .vazio h2 { color: var(--texto); }
+
+/* Importar */
+form.importar { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; margin: 1rem 0; }
+form.importar input {
+  flex: 1 1 320px; padding: .6rem .8rem; font: inherit; color: var(--texto);
+  background: var(--superficie); border: 1px solid var(--borda); border-radius: 8px;
+}
+
+@media (max-width: 600px) {
+  .topo, main { padding-left: 1rem; padding-right: 1rem; }
+}
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }

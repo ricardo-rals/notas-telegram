@@ -4,7 +4,7 @@
 <h1>Importar exportação do Telegram Desktop</h1>
 <p>No Telegram Desktop: grupo → ⋮ → Exportar histórico, formato <strong>JSON</strong>.
 Informe a pasta que contém o <code>result.json</code>. Mensagens que já são notas não mudam.</p>
-<form hx-post="/importar" hx-target="#status">
+<form class="importar" hx-post="/importar" hx-target="#status">
   <label for="pasta">Pasta da exportação</label>
   <input id="pasta" name="pasta" required size="60" placeholder="C:\Users\...\ChatExport_2026-11-05">
   <button type="submit">Importar</button>

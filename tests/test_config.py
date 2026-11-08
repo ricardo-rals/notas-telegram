@@ -49,3 +49,15 @@ def test_vazio_conta_como_ausente(tmp_path):
     assert cfg.database_path.parent == tmp_path / "notas-telegram"
     assert cfg.media_dir == RAIZ_REPO / "data" / "media"
     assert isinstance(cfg.database_path, Path)
+
+
+# --- 003: PREVIAS_LINKS ---------------------------------------------------------------
+@pytest.mark.parametrize("valor, esperado", [(None, True), ("0", False), ("1", True)])
+def test_previas_links(tmp_path, valor, esperado):
+    env = {**BASE, "DATABASE_PATH": str(tmp_path / "n.db")} | ({"PREVIAS_LINKS": valor} if valor else {})
+    assert carregar(env=env).previas_links is esperado
+
+
+def test_previas_links_invalido(tmp_path):
+    with pytest.raises(ErroConfig, match="PREVIAS_LINKS"):
+        carregar(env={**BASE, "DATABASE_PATH": str(tmp_path / "n.db"), "PREVIAS_LINKS": "sim"})

@@ -1,0 +1,62 @@
+{
+ "message_id": 60,
+ "date": 1762367000,
+ "chat": {
+  "id": -1001234567890,
+  "type": "supergroup",
+  "title": "Caderno (inventado)"
+ },
+ "from": {
+  "id": 111,
+  "is_bot": false,
+  "first_name": "Dono"
+ },
+ "text": "[12:40, 05/11/2026] Usuario: https://imp.i384100.net/cbUijS\n[12:44, 05/11/2026] Usuario: https://www.instagram.com/J/DiFsSx28PAT/?LWr_eCLfK=c&DR2d=JVDiFsSx28PATNCL\n[14:10, 05/11/2026] Usuario: https://www.instagram.com/P/V2gfEMKEXvJ/?BLVx=M6LumJzUWfFgPSV2\n[15:09, 05/11/2026] Usuario: https://www.instagram.com/H3RD/jBseDhpAotm/?hXoW=QirPs5z9VH3RDZjB\n[16:04, 05/11/2026] Usuario: https://www.instagram.com/6/xLoktdxwnEx/?xf28=yusNzxmY9oaJ6gxL\n[20:30, 05/11/2026] Usuario: https://www.instagram.com/xE2U/DojVKg_Dw4N/?vhxW=eCYErv4vmxE2UuDojV==\n[20:37, 05/11/2026] Usuario: https://www.instagram.com/2AGz/euXfRAyWvRs/?os8Z=888abaZ6T2AGzPeu\n[20:39, 05/11/2026] Usuario: https://www.instagram.com/5Yzo/dzKsmDVRqbu/?hCJF=8sgesyKJo5YzoVdzKs==\n[20:41, 05/11/2026] Usuario: https://www.instagram.com/2WxL/Rcwi28CpY-x/?DXea=xAFDDB4sy2WxLDRc",
+ "entities": [
+  {
+   "type": "url",
+   "offset": 29,
+   "length": 30
+  },
+  {
+   "type": "url",
+   "offset": 89,
+   "length": 74
+  },
+  {
+   "type": "url",
+   "offset": 193,
+   "length": 62
+  },
+  {
+   "type": "url",
+   "offset": 285,
+   "length": 65
+  },
+  {
+   "type": "url",
+   "offset": 380,
+   "length": 62
+  },
+  {
+   "type": "url",
+   "offset": 472,
+   "length": 69
+  },
+  {
+   "type": "url",
+   "offset": 571,
+   "length": 65
+  },
+  {
+   "type": "url",
+   "offset": 666,
+   "length": 69
+  },
+  {
+   "type": "url",
+   "offset": 765,
+   "length": 65
+  }
+ ]
+}

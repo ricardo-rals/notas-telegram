@@ -1,6 +1,7 @@
 """Acesso a dados. Cada função grava e faz commit da própria unidade de trabalho."""
 
 import json
+from collections.abc import Iterable
 from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import Connection, Integer, column, delete, func, insert as insert_core, select, text, update
@@ -8,8 +9,15 @@ from sqlalchemy.dialects.sqlite import insert
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from notas.db import TIPOS, Importacao, Nota, NotaSite, agora
-from notas.regras import normalizar_bot_api, normalizar_exportacao, sites_da_nota, sites_do_texto
+from notas.db import TIPOS, Importacao, Link, Nota, Previa, agora
+from notas.regras import (
+    SEM_SITE,
+    ItemLink,
+    itens_de_link,
+    itens_do_texto,
+    normalizar_bot_api,
+    normalizar_exportacao,
+)
 
 # Campos que a captura ao vivo reescreve numa edição; enviada_em, criada_em e origem nunca mudam.
 ATUALIZAVEIS = (
@@ -18,20 +26,38 @@ ATUALIZAVEIS = (
 )
 
 
-def _gravar_sites(sessao: Session, nota_id: int, tipo: str, sites: frozenset[str]) -> None:
-    """Substitui os sites da nota. Só link tem site, e link nunca fica sem nenhum (FR-007)."""
-    sessao.execute(delete(NotaSite).where(NotaSite.nota_id == nota_id))
-    if tipo == "link":
-        sessao.add_all(NotaSite(nota_id=nota_id, site=s) for s in (sites or {""}))
+def _linhas_link(nota_id: int, tipo: str, itens, enviada_em: str) -> list[dict]:
+    """Só link tem itens, e link nunca fica sem nenhum (sentinela, FR-007 da 002)."""
+    if tipo != "link":
+        return []
+    itens = list(itens) or [ItemLink(0, "", SEM_SITE, enviada_em, None)]
+    return [{"nota_id": nota_id, "posicao": i.posicao, "url": i.url, "site": i.site, "data": i.data,
+             "autor": i.autor} for i in itens]
 
 
-def salvar_ao_vivo(sessao: Session, dados: dict, sites: frozenset[str] = frozenset()) -> None:
+def _gravar_links(sessao: Session, nota_id: int, tipo: str, itens, enviada_em: str) -> None:
+    """Substitui os itens de link da nota inteiros (FR-004)."""
+    sessao.execute(delete(Link).where(Link.nota_id == nota_id))
+    linhas = _linhas_link(nota_id, tipo, itens, enviada_em)
+    if linhas:
+        sessao.execute(insert_core(Link), linhas)
+        _previas_pendentes(sessao, linhas)
+
+
+def _previas_pendentes(conn, linhas: list[dict]) -> None:
+    """Uma prévia por URL (FR-005): cria `pendente` só se ainda não existe."""
+    urls = [{"url": u} for u in dict.fromkeys(linha["url"] for linha in linhas) if u]
+    if urls:
+        conn.execute(insert(Previa).on_conflict_do_nothing(), urls)
+
+
+def salvar_ao_vivo(sessao: Session, dados: dict, itens: Iterable[ItemLink] = ()) -> None:
     stmt = insert(Nota).values(**dados, origem="ao_vivo", criada_em=agora())
     stmt = stmt.on_conflict_do_update(
         index_elements=["chat_id", "message_id"],
         set_={c: stmt.excluded[c] for c in ATUALIZAVEIS},
     ).returning(Nota.id)
-    _gravar_sites(sessao, sessao.execute(stmt).scalar_one(), dados["tipo"], sites)
+    _gravar_links(sessao, sessao.execute(stmt).scalar_one(), dados["tipo"], itens, dados["enviada_em"])
     sessao.commit()
 
 
@@ -61,23 +87,24 @@ def consulta_fts(q: str) -> str | None:
     return " ".join('"' + p.replace('"', '""') + '"' for p in palavras) or None
 
 
-def buscar(
-    sessao: Session, q: str = "", tipo: str = "", pagina: int = 1, site: str | None = None
-) -> tuple[list[Nota], int]:
-    """`site` só vale na aba link; `''` = sem site identificado; None = todos."""
+def _ids_fts(tabela: str, fts: str):
+    return text(f"SELECT rowid FROM {tabela} WHERE {tabela} MATCH :fts").bindparams(fts=fts).columns(
+        column("rowid", Integer)
+    )
+
+
+def buscar(sessao: Session, q: str = "", tipo: str = "", pagina: int = 1) -> tuple[list[Nota], int]:
+    """Lista de notas (todas as abas, exceto a de links, que usa `buscar_links`)."""
     filtro = select(Nota)
     if q.strip():
         fts = consulta_fts(q)
         if fts is None:
             return [], 0
-        ids = text("SELECT rowid FROM nota_fts WHERE nota_fts MATCH :fts").bindparams(fts=fts)
-        filtro = filtro.where(Nota.id.in_(ids.columns(column("rowid", Integer))))
+        filtro = filtro.where(Nota.id.in_(_ids_fts("nota_fts", fts)))
     if tipo == "falha":
         filtro = filtro.where(Nota.situacao == "falha")
     elif tipo:
         filtro = filtro.where(Nota.tipo == tipo)
-    if tipo == "link" and site is not None:
-        filtro = filtro.where(Nota.id.in_(select(NotaSite.nota_id).where(NotaSite.site == site)))
     total = sessao.scalar(select(func.count()).select_from(filtro.subquery()))
     itens = sessao.scalars(
         filtro.order_by(Nota.enviada_em.desc(), Nota.id.desc())
@@ -87,50 +114,126 @@ def buscar(
 
 
 def contar_por_tipo(sessao: Session) -> dict[str, int]:
-    """Contagens do caderno inteiro (FR-002): um por tipo, mais `falha` e `todas`."""
+    """Contagens do caderno inteiro (FR-002 da 002): uma por tipo, mais `falha` e `todas`.
+    A aba link conta itens de link; as demais (e `todas`) contam notas (FR-002 da 003)."""
     c = {t: 0 for t in TIPOS} | dict(sessao.execute(select(Nota.tipo, func.count()).group_by(Nota.tipo)).all())
-    c["falha"] = sessao.scalar(select(func.count()).where(Nota.situacao == "falha"))
     c["todas"] = sum(c[t] for t in TIPOS)
+    c["link"] = sessao.scalar(select(func.count()).select_from(Link).join(Nota).where(Nota.tipo == "link"))
+    c["falha"] = sessao.scalar(select(func.count()).where(Nota.situacao == "falha"))
     return c
 
 
 def contar_sites(sessao: Session) -> list[tuple[str, int]]:
-    """Sites das notas de link, do mais usado ao menos usado; "sem site" sempre por último."""
+    """Itens de link por site, do mais usado ao menos usado; "sem site" sempre por último."""
     n = func.count().label("n")
     return [tuple(r) for r in sessao.execute(
-        select(NotaSite.site, n).join(Nota, Nota.id == NotaSite.nota_id).where(Nota.tipo == "link")
-        .group_by(NotaSite.site).order_by(NotaSite.site == "", n.desc(), NotaSite.site)
+        select(Link.site, n).join(Nota).where(Nota.tipo == "link")
+        .group_by(Link.site).order_by(Link.site == "", n.desc(), Link.site)
     ).all()]
 
 
-def _sites_guardados(origem: str, bruto: str | None, texto: str, chat_id: int) -> frozenset[str]:
-    """Sites de uma nota já gravada: pelo JSON original, com as mesmas regras da captura;
+def buscar_links(
+    sessao: Session, site: str | None = None, q: str = "", pagina: int = 1
+) -> tuple[list[tuple[Link, Nota, Previa | None]], int]:
+    """Aba Link: um item por link (FR-002), do mais recente ao mais antigo pela data do item
+    (FR-017). `q` casa com o texto da nota ou com a prévia; `site=''` = sem site identificado."""
+    filtro = select(Link, Nota, Previa).join(Nota).outerjoin(Previa, Previa.url == Link.url).where(Nota.tipo == "link")
+    if site is not None:
+        filtro = filtro.where(Link.site == site)
+    if q.strip():
+        fts = consulta_fts(q)
+        if fts is None:
+            return [], 0
+        urls_previa = select(Previa.url).where(text("previa.rowid IN (SELECT rowid FROM previa_fts WHERE previa_fts MATCH :fp)"))
+        filtro = filtro.where(
+            Nota.id.in_(_ids_fts("nota_fts", fts)) | Link.url.in_(urls_previa)
+        ).params(fp=fts)
+    total = sessao.scalar(select(func.count()).select_from(filtro.subquery()))
+    linhas = sessao.execute(
+        filtro.order_by(Link.data.desc(), Link.nota_id.desc(), Link.posicao)
+        .limit(POR_PAGINA).offset((pagina - 1) * POR_PAGINA)
+    ).all()
+    return [tuple(r) for r in linhas], total
+
+
+def links_das_notas(sessao: Session, ids: list[int]) -> dict[int, list[tuple[Link, Previa | None]]]:
+    """Itens de link de várias notas numa consulta só (mini-cartões fora da aba Link)."""
+    if not ids:
+        return {}
+    r: dict[int, list] = {}
+    for lk, previa in sessao.execute(
+        select(Link, Previa).outerjoin(Previa, Previa.url == Link.url)
+        .where(Link.nota_id.in_(ids)).order_by(Link.nota_id, Link.posicao)
+    ).all():
+        r.setdefault(lk.nota_id, []).append((lk, previa))
+    return r
+
+
+def _itens_guardados(origem: str, bruto: str | None, texto: str, chat_id: int, enviada_em: str) -> list[ItemLink]:
+    """Itens de uma nota já gravada: pelo JSON original, com as mesmas regras da captura;
     sem JSON utilizável, pela regex sobre o texto."""
     try:
         d = json.loads(bruto)
         m = normalizar_bot_api(d) if origem == "ao_vivo" else normalizar_exportacao(d, chat_id)
-        return sites_da_nota(m)
+        return itens_de_link(m)
     except Exception:
-        return sites_do_texto(texto)
+        return itens_do_texto(texto, enviada_em)
 
 
-def reclassificar_sites(conn: Connection) -> int:
-    """Recalcula nota_site de todas as notas de link (FR-011). Idempotente; não toca em `nota`.
+def reconstruir_links(conn: Connection) -> int:
+    """Refaz os itens de todas as notas de link (FR-015). Idempotente; não toca em `nota`.
     Não faz commit: roda dentro da transação de quem chama (migração ou teste)."""
-    t = NotaSite.__table__
-    conn.execute(delete(t).where(t.c.nota_id.in_(select(Nota.id).where(Nota.tipo != "link"))))
+    t = Link.__table__
     notas = conn.execute(
-        select(Nota.id, Nota.origem, Nota.bruto, Nota.texto, Nota.chat_id).where(Nota.tipo == "link")
+        select(Nota.id, Nota.origem, Nota.bruto, Nota.texto, Nota.chat_id, Nota.enviada_em)
+        .where(Nota.tipo == "link")
     ).all()
-    conn.execute(delete(t).where(t.c.nota_id.in_(select(Nota.id).where(Nota.tipo == "link"))))
+    conn.execute(delete(t))
     linhas = [
-        {"nota_id": n.id, "site": s}
+        linha
         for n in notas
-        for s in _sites_guardados(n.origem, n.bruto, n.texto, n.chat_id)
+        for linha in _linhas_link(
+            n.id, "link", _itens_guardados(n.origem, n.bruto, n.texto, n.chat_id, n.enviada_em), n.enviada_em
+        )
     ]
     if linhas:
         conn.execute(insert_core(t), linhas)
+        _previas_pendentes(conn, linhas)
     return len(notas)
+
+
+# --- Fila de prévias (003 US2) -------------------------------------------------------
+RECUO = (timedelta(hours=1), timedelta(hours=6), timedelta(hours=24), timedelta(days=7))
+
+
+def proximas_previas(sessao: Session, agora_: datetime, limite: int = 5) -> list[str]:
+    """Pendentes e indisponíveis não definitivas cujo recuo já venceu."""
+    vencida = (Previa.tentar_depois_de.is_(None)) | (Previa.tentar_depois_de <= agora_.isoformat(timespec="seconds"))
+    return list(sessao.scalars(
+        select(Previa.url)
+        .where(Previa.situacao.in_(("pendente", "indisponivel")), Previa.definitiva == 0, vencida)
+        .order_by(Previa.tentar_depois_de.is_not(None), Previa.tentar_depois_de, Previa.url)
+        .limit(limite)
+    ))
+
+
+def registrar_previa(sessao: Session, url: str, r, agora_: datetime) -> None:
+    """Transições de data-model: ok (fim), falha temporária (recuo 1 h, 6 h, 24 h, 7 d), definitiva (fim)."""
+    p = sessao.get(Previa, url) or Previa(url=url, tentativas=0)
+    p.buscada_em = agora_.isoformat(timespec="seconds")
+    if r.situacao == "ok":
+        p.situacao, p.titulo, p.descricao, p.imagem, p.erro = "ok", r.titulo, r.descricao, r.imagem, None
+        p.tentar_depois_de = None
+    else:
+        p.situacao, p.erro = "indisponivel", r.erro
+        p.tentativas = (p.tentativas or 0) + 1
+        if r.definitiva:
+            p.definitiva, p.tentar_depois_de = 1, None
+        else:
+            espera = RECUO[min(p.tentativas, len(RECUO)) - 1]
+            p.tentar_depois_de = (agora_ + espera).isoformat(timespec="seconds")
+    sessao.add(p)
+    sessao.commit()
 
 
 # --- Importação (US5) ---------------------------------------------------------------
@@ -147,7 +250,7 @@ def nota_existe(sessao: Session, chat_id: int, message_id: int) -> bool:
     ) is not None
 
 
-def salvar_importada(sessao: Session, dados: dict, sites: frozenset[str] = frozenset()) -> bool:
+def salvar_importada(sessao: Session, dados: dict, itens: Iterable[ItemLink] = ()) -> bool:
     """Nunca altera nota existente (FR-019). Devolve True se criou."""
     stmt = (
         insert(Nota).values(**dados, origem="importacao", criada_em=agora())
@@ -155,7 +258,7 @@ def salvar_importada(sessao: Session, dados: dict, sites: frozenset[str] = froze
     )
     nota_id = sessao.execute(stmt).scalar()
     if nota_id is not None:
-        _gravar_sites(sessao, nota_id, dados["tipo"], sites)
+        _gravar_links(sessao, nota_id, dados["tipo"], itens, dados["enviada_em"])
     sessao.commit()
     return nota_id is not None
 

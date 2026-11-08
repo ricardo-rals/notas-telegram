@@ -132,20 +132,37 @@ def test_terceiro_com_mensagem_ilegivel_tambem_nao_gera_falha(sessao, config_tes
     assert notas(sessao) == []
 
 
-# --- 002 US4 ------------------------------------------------------------------------
-from notas.db import NotaSite  # noqa: E402
+# --- 002/003: itens de link gravados pela captura ----------------------------------------
+from notas.db import Link  # noqa: E402
+
+
+def itens(sessao, mid):
+    sessao.expire_all()
+    return sessao.execute(
+        select(Link.url, Link.site, Link.autor).join(Nota, Nota.id == Link.nota_id)
+        .where(Nota.message_id == mid).order_by(Link.posicao)
+    ).all()
 
 
 def sites(sessao, mid):
-    sessao.expire_all()
-    return set(sessao.scalars(
-        select(NotaSite.site).join(Nota, Nota.id == NotaSite.nota_id).where(Nota.message_id == mid)
-    ))
+    return {s for _, s, _ in itens(sessao, mid)}
 
 
-def test_link_grava_sites(sessao, config_teste):
+def test_link_grava_itens(sessao, config_teste):
     processar("link_varios_sites", sessao, config_teste)
-    assert sites(sessao, 40) == {"youtube.com", "instagram.com"}
+    assert [s for _, s, _ in itens(sessao, 40)] == ["youtube.com", "youtube.com", "instagram.com"]
+
+
+def test_mensagem_de_exemplo_9_itens_e_edicao(sessao, config_teste):
+    processar("whatsapp_9_links", sessao, config_teste)
+    i = itens(sessao, 60)
+    assert len(i) == 9 and {a for _, _, a in i} == {"Usuario"}
+    msg = carregar_fixture("bot_api/whatsapp_9_links.json")
+    texto = "\n".join(msg["text"].split("\n")[:7])
+    msg |= {"text": texto, "entities": [e for e in msg["entities"] if e["offset"] < len(texto)],
+            "edit_date": 1762368000}
+    processar(msg, sessao, config_teste)
+    assert len(itens(sessao, 60)) == 7  # FR-004
 
 
 def test_edicao_troca_site(sessao, config_teste):
@@ -163,7 +180,7 @@ def test_edicao_com_url_vira_link_com_site(sessao, config_teste):
     assert n.tipo == "link" and sites(sessao, n.message_id) - {""}
 
 
-def test_foto_com_url_na_legenda_sem_site(sessao, config_teste):
+def test_foto_com_url_na_legenda_sem_itens(sessao, config_teste):
     msg = carregar_fixture("bot_api/foto_legenda.json") | {"caption": "https://a.com"}
     processar(msg, sessao, config_teste)
-    assert sites(sessao, msg["message_id"]) == set()
+    assert itens(sessao, msg["message_id"]) == []
