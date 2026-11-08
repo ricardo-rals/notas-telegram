@@ -8,6 +8,18 @@
 
 **Input**: User description: "Redesenho do painel, escuro primeiro: barra lateral com tipos e contagens, grade de cartões em largura total, cartão próprio para cada tipo, aviso de notas novas no lugar da atualização automática, atalho / para buscar, foto ampliada na página, estados vazio e de carregamento desenhados, e importação que encontra as exportações em Downloads sozinha."
 
+## Clarifications
+
+### Session 2026-11-08
+
+Execução automática pedida pelo dono; cada pergunta foi respondida com a opção recomendada.
+
+- Q: Ao trocar de categoria, a busca digitada continua valendo? → A: sim; busca, categoria e
+  site combinam, como na 002 (FR-003).
+- Q: O aviso de notas novas conta por data de envio ou por ordem de chegada? → A: por data de
+  envio, a mesma ordem da lista: conta as notas mais novas que a primeira exibida (FR-008).
+- Q: Qual serviço o "Abrir no mapa" usa? → A: OpenStreetMap, só como link externo (Assumptions).
+
 ## User Scenarios & Testing *(mandatory)*
 
 ### User Story 1 - Navegar pela barra lateral (Priority: P1)
