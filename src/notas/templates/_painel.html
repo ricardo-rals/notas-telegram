@@ -1,0 +1,22 @@
+{#- Unidade de troca do HTMX (research R1 da 004): barra lateral, avisos e lista. -#}
+<div id="painel" class="concha" hx-boost="true" hx-target="#painel" hx-select="#painel" hx-swap="outerHTML" hx-indicator="#painel">
+  <nav aria-label="Categorias" class="lateral">
+  {%- for valor, rotulo, n in categorias %}
+    <a href="{{ href(q, valor) }}"{% if valor == tipo %} aria-current="page"{% endif %}>{{ rotulo }}<span class="n">{{ n }}</span></a>
+  {%- endfor %}
+  </nav>
+  <section class="principal" aria-label="Notas">
+    {%- if falhas %}
+    <a class="aviso-falhas" href="/?tipo=falha">
+      {{ falhas }} {{ 'falha' if falhas == 1 else 'falhas' }} · ver</a>
+    {%- endif %}
+    {%- if novas_desde is not none %}{% set desde = novas_desde %}{% set n = 0 %}{% include "_novas.html" %}{% endif %}
+    {%- if tipo == 'falha' %}<h1 class="titulo">Falhas</h1>{% endif %}
+    {% include "_notas.html" %}
+    <div class="fantasmas" aria-hidden="true">
+      {%- for _ in range(6) %}<div class="cartao fantasma"><span></span><span></span><span></span></div>{% endfor %}
+    </div>
+  </section>
+  <input type="hidden" id="f-tipo" name="tipo" value="{{ tipo }}" hx-swap-oob="true">
+  <input type="hidden" id="f-site" name="site" value="{{ site }}" hx-swap-oob="true">
+</div>

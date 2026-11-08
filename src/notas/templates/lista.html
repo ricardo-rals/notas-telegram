@@ -1,15 +1,15 @@
 {% extends "base.html" %}
-{% block conteudo %}
-<form id="filtros" class="filtros" action="/" method="get"
-      hx-get="/" hx-target="#notas" hx-push-url="true"
-      hx-trigger="input changed delay:300ms from:input, submit">
-  <label for="q" hidden>Buscar</label>
-  <input id="q" type="search" name="q" value="{{ q }}" placeholder="Buscar por palavra" autofocus>
-  <input type="hidden" name="tipo" value="{{ tipo }}">
-  <input type="hidden" name="site" value="{{ site }}">
+{% block busca %}
+<form id="filtros" class="busca" action="/" method="get" role="search"
+      hx-get="/" hx-target="#painel" hx-select="#painel" hx-swap="outerHTML" hx-push-url="true"
+      hx-indicator="#painel" hx-trigger="input changed delay:300ms from:#q, search from:#q, submit">
+  <label for="q" class="oculto">Buscar</label>
+  <input id="q" type="search" name="q" value="{{ q }}" placeholder="Buscar" autocomplete="off">
+  <kbd aria-hidden="true">/</kbd>
+  <input type="hidden" id="f-tipo" name="tipo" value="{{ tipo }}">
+  <input type="hidden" id="f-site" name="site" value="{{ site }}">
 </form>
-<div id="notas"
-     {% if pagina == 1 %}hx-get="/" hx-include="#filtros" hx-trigger="every 10s"{% endif %}>
-  {% include "_notas.html" %}
-</div>
+{% endblock %}
+{% block conteudo %}
+{% include "_painel.html" %}
 {% endblock %}

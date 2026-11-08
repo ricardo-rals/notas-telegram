@@ -4,18 +4,24 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{% block titulo %}Notas{% endblock %}</title>
-<script src="/static/htmx.min.js"></script>
 <!-- respostas 4xx (409/422) também são exibidas -->
 <meta name="htmx-config" content='{"responseHandling":[{"code":"204","swap":false},{"code":"[23]..","swap":true},{"code":"4..","swap":true,"error":false},{"code":"...","swap":false}]}'>
+<link rel="preload" href="/static/fontes/InterVariable.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="/static/painel.css">
+<script src="/static/htmx.min.js"></script>
+<script src="/static/painel.js" defer></script>
 </head>
 <body>
 <header class="topo">
   <a class="marca" href="/">Notas</a>
-  <nav><a href="/importar">Importar exportação</a></nav>
+  {% block busca %}{% endblock %}
+  <nav class="menu" aria-label="Páginas"><a href="/importar"{% if request.url.path == '/importar' %} aria-current="page"{% endif %}>Importar</a></nav>
 </header>
-<main>
 {% block conteudo %}{% endblock %}
-</main>
+<dialog id="foto" aria-label="Foto ampliada">
+  <img src="" alt="">
+  <p class="legenda"></p>
+  <button type="button" class="fechar" aria-label="Fechar">×</button>
+</dialog>
 </body>
 </html>

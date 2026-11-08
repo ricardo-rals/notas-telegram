@@ -2,6 +2,7 @@
 
 import logging
 import math
+import re
 import threading
 from datetime import datetime
 from pathlib import Path
@@ -16,13 +17,14 @@ from sqlalchemy.orm import Session
 
 from notas.config import Config, ErroConfig, carregar
 from notas.db import TIPOS, Nota, criar_engine, exigir_revisao_atual
-from notas.importacao import executar
+from notas.importacao import encontrar_exportacoes, executar
 from notas.previas import iniciar_thread
 from notas.repositorio import (
     POR_PAGINA,
     ImportacaoEmAndamento,
     buscar,
     buscar_links,
+    contar_novas,
     contar_por_tipo,
     contar_sites,
     iniciar_importacao,
@@ -39,8 +41,11 @@ ROTULOS = {
 }
 CSP = ("default-src 'self'; img-src 'self'; style-src 'self' 'unsafe-inline'; "
        "script-src 'self'; frame-ancestors 'none'")  # research R7 da 003: nada carregado de fora
-FILTROS = list(ROTULOS.items()) + [("falha", "Falhas")]
-ABAS = [("todas", "", "Todas")] + [(v, v, r) for v, r in FILTROS]  # (chave da contagem, tipo, rótulo)
+ROTULOS_PLURAIS = {
+    "texto": "textos", "link": "links", "foto": "fotos", "audio": "áudios", "video": "vídeos",
+    "documento": "documentos", "localizacao": "localizações", "contato": "contatos", "outro": "outras",
+}
+PASTAS_EXPORTACAO = [Path.home() / "Downloads" / "Telegram Desktop", Path.home() / "Downloads"]
 
 
 def href(q: str = "", tipo: str = "", site: str = "", pagina: int | None = None) -> str:
@@ -50,6 +55,43 @@ def href(q: str = "", tipo: str = "", site: str = "", pagina: int | None = None)
     return f"/?{query}" if query else "/"
 
 
+def extensao(nome: str | None) -> str:
+    """Selo do cartão de documento: "PDF", "XLSX"; sem extensão curta, "ARQ" (research R7 da 004)."""
+    ext = Path(nome or "").suffix[1:]
+    return ext.upper() if 0 < len(ext) <= 5 and ext.isalnum() else "ARQ"
+
+
+def tamanho(n: int | None) -> str:
+    if n is None:
+        return ""
+    for unidade, base in (("GB", 1024**3), ("MB", 1024**2)):
+        if n >= base:
+            return f"{n / base:.1f} {unidade}".replace(".", ",")
+    return f"{round(n / 1024)} KB" if n >= 1024 else f"{n} B"
+
+
+COORD = re.compile(r"^\s*(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)\s*$")
+
+
+def mapa(texto: str | None) -> str | None:
+    """Link do OpenStreetMap para "lat, lon"; o painel nunca carrega o mapa (Princípio I)."""
+    m = COORD.match(texto or "")
+    if not m or abs(float(m[1])) > 90 or abs(float(m[2])) > 180:
+        return None
+    lat, lon = m[1], m[2]
+    return f"https://www.openstreetmap.org/?mlat={lat}&mlon={lon}#map=16/{lat}/{lon}"
+
+
+def contato(texto: str | None) -> tuple[str, str, str | None]:
+    """(nome, telefone, href tel:) a partir de "nome, telefone" (FR-005 da 001)."""
+    nome, _, tel = (texto or "").rpartition(",")
+    if not nome:
+        return (texto or "").strip(), "", None
+    tel = tel.strip()
+    digitos = re.sub(r"[^\d+]", "", tel)
+    return nome.strip(), tel, f"tel:{digitos}" if digitos else None
+
+
 def data_local(iso: str) -> str:
     try:
         return datetime.fromisoformat(iso).astimezone().strftime("%d/%m/%Y %H:%M")
@@ -57,12 +99,15 @@ def data_local(iso: str) -> str:
         return iso
 
 
-def criar_app(cfg: Config, engine: Engine, iniciar_previas=iniciar_thread) -> FastAPI:
+def criar_app(cfg: Config, engine: Engine, iniciar_previas=iniciar_thread, pastas_exportacao=None) -> FastAPI:
     app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
     hosts = {f"127.0.0.1:{cfg.painel_port}", f"localhost:{cfg.painel_port}"}
     origens = {f"http://{h}" for h in hosts}
     templates = Jinja2Templates(directory=AQUI / "templates")
     templates.env.filters["data_local"] = data_local
+    for f in (extensao, tamanho, mapa, contato):
+        templates.env.filters[f.__name__] = f
+    pastas_exportacao = PASTAS_EXPORTACAO if pastas_exportacao is None else pastas_exportacao
 
     @app.middleware("http")
     async def so_local(request: Request, call_next):
@@ -82,27 +127,42 @@ def criar_app(cfg: Config, engine: Engine, iniciar_previas=iniciar_thread) -> Fa
         if tipo and tipo not in TIPOS and tipo != "falha":
             raise HTTPException(422, "tipo inválido")
         with Session(engine) as sessao:
-            # site na URL: "-" = sem site identificado (''), vazio = todos; outro valor vai como veio (FR-015)
+            # site na URL: "-" = sem site identificado (''), vazio = todos; outro valor vai como veio (FR-015 da 002)
             filtro_site = {"": None, "-": ""}.get(site, site)
             notas, links, links_por_nota, sites = [], [], {}, []
-            if tipo == "link":  # aba Link: um item por link (FR-002)
+            if tipo == "link":  # aba Link: um item por link (FR-002 da 003)
                 links, total = buscar_links(sessao, site=filtro_site, q=q, pagina=pagina)
                 sites = contar_sites(sessao)
             else:
                 notas, total = buscar(sessao, q=q, tipo=tipo, pagina=pagina)
                 links_por_nota = links_das_notas(sessao, [n.id for n in notas if n.tipo == "link"])
             contagens = contar_por_tipo(sessao)
+            categorias = [("", "Todas", contagens["todas"])] + [
+                (t, rot, contagens[t]) for t, rot in ROTULOS.items() if contagens[t] or t == tipo
+            ]
+            fotos = {n.id for n in notas if n.tipo == "foto" and n.arquivo_caminho
+                     and (cfg.media_dir / n.arquivo_caminho).is_file()}
+            # aviso de notas novas só na 1ª página sem filtro (FR-008 da 004)
+            novas = None
+            if pagina == 1 and not (q or tipo or site):
+                novas = notas[0].enviada_em if notas else ""
             contexto = {
-            "notas": notas, "links": links, "links_por_nota": links_por_nota,
-            "total": total, "q": q, "tipo": tipo, "pagina": pagina,
-            "por_pagina": POR_PAGINA, "paginas": max(1, math.ceil(total / POR_PAGINA)),
-            "rotulos": ROTULOS, "abas": ABAS, "contagens": contagens, "href": href,
-            "sites": sites, "site": site,
-            "consulta": lambda p: href(q, tipo, site, pagina=p),
+                "notas": notas, "links": links, "links_por_nota": links_por_nota,
+                "total": total, "q": q, "tipo": tipo, "pagina": pagina,
+                "por_pagina": POR_PAGINA, "paginas": max(1, math.ceil(total / POR_PAGINA)),
+                "rotulos": ROTULOS, "plurais": ROTULOS_PLURAIS, "categorias": categorias,
+                "contagens": contagens, "falhas": contagens["falha"], "href": href,
+                "sites": sites, "site": site, "fotos": fotos, "novas_desde": novas,
+                "consulta": lambda p: href(q, tipo, site, pagina=p),
             }
-            modelo = "_notas.html" if request.headers.get("hx-request") else "lista.html"
             # renderiza com a sessão aberta: os objetos ainda são lidos no template
-            return templates.TemplateResponse(request, modelo, contexto)
+            return templates.TemplateResponse(request, "lista.html", contexto)
+
+    @app.get("/novas")
+    def novas(request: Request, desde: str = ""):
+        with Session(engine) as sessao:
+            n = contar_novas(sessao, desde)
+        return templates.TemplateResponse(request, "_novas.html", {"desde": desde, "n": n})
 
     def status(request: Request, codigo: int = 200, aviso: str | None = None):
         with Session(engine) as sessao:
@@ -115,7 +175,9 @@ def criar_app(cfg: Config, engine: Engine, iniciar_previas=iniciar_thread) -> Fa
         with Session(engine) as sessao:
             imp = ultima_importacao(sessao)
             sessao.expunge_all()
-        return templates.TemplateResponse(request, "importar.html", {"imp": imp, "aviso": None})
+        exportacoes = encontrar_exportacoes(pastas_exportacao, cfg.chat_id)
+        return templates.TemplateResponse(
+            request, "importar.html", {"imp": imp, "aviso": None, "exportacoes": exportacoes})
 
     @app.get("/importar/status")
     def status_importacao(request: Request):

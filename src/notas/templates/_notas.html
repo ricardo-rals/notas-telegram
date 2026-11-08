@@ -1,9 +1,4 @@
-<nav aria-label="Tipos" class="abas">
-{%- for chave, valor, rotulo in abas %}
-  <a href="{{ href(q, valor) }}"{% if valor == tipo %} aria-current="page"{% endif %}>{{ rotulo }} ({{ contagens[chave] }})</a>
-{%- endfor %}
-</nav>
-{% if tipo == 'link' %}
+{%- if tipo == 'link' %}
 <nav aria-label="Sites" class="abas sites">
   <a href="{{ href(q, 'link') }}"{% if not site %} aria-current="page"{% endif %}>Todos os sites</a>
 {%- for nome, n in sites %}
@@ -15,65 +10,47 @@
   {%- endif %}
 {%- endfor %}
 </nav>
+{%- endif %}
+{%- set itens_lista = links if tipo == 'link' else notas %}
+{%- if itens_lista %}
 <div class="grade">
+{%- if tipo == 'link' %}
 {%- for lk, nota, previa in links %}
 {% include "_cartao_link.html" %}
-{%- else %}
-<p>Nenhuma nota encontrada.</p>
 {%- endfor %}
+{%- else %}
+{%- for n in notas %}
+{% include "_cartao_nota.html" %}
+{%- endfor %}
+{%- endif %}
 </div>
-{% else %}
-<div class="lista">
-{% for n in notas %}
-{%- set itens = links_por_nota.get(n.id, []) %}
-<article class="cartao nota{% if n.situacao == 'falha' %} falha{% endif %}">
-  <div class="conteudo">
-  {%- if n.tipo == 'link' and itens %}
-    {%- if n.texto and itens | length > 1 %}
-    <details><summary>texto da mensagem</summary><div class="texto">{{ n.texto }}</div></details>
-    {%- elif n.texto %}
-    <div class="texto">{{ n.texto }}</div>
-    {%- endif %}
-    {%- set nota = n %}
-    <div class="grade">
-    {%- for lk, previa in itens %}
-    {% include "_cartao_link.html" %}
-    {%- endfor %}
-    </div>
-  {%- else %}
-    {% if n.texto %}<div class="texto">{{ n.texto }}</div>{% endif %}
-    {% if n.arquivo_caminho %}
-      {% if n.tipo == 'foto' %}
-      <a href="/media/{{ n.arquivo_caminho }}" target="_blank"><img class="foto" loading="lazy" src="/media/{{ n.arquivo_caminho }}" alt="{{ n.texto or 'foto' }}"></a>
-      {% elif n.tipo == 'audio' %}
-      <audio controls src="/media/{{ n.arquivo_caminho }}" preload="none"></audio>
-      {% else %}
-      <span class="arquivo">{{ n.arquivo_nome or n.arquivo_caminho }}</span>
-      {% endif %}
-    {% endif %}
-  {%- endif %}
-  {% if n.situacao == 'grande_demais' %}<div class="aviso">Arquivo{% if n.arquivo_nome %} {{ n.arquivo_nome }}{% endif %} acima de 20 MB: não foi baixado.</div>{% endif %}
-  {% if n.situacao == 'sem_arquivo' %}<div class="aviso">O arquivo não veio na exportação.</div>{% endif %}
-  {% if n.situacao == 'falha' %}<div class="erro">Falha: {{ n.erro }}</div>{% endif %}
-  </div>
-  <p class="meta">
-    {{ rotulos[n.tipo] }} · {{ n.enviada_em | data_local }}
-    {% if n.editada_em %} · editada {{ n.editada_em | data_local }}{% endif %}
-    · <a href="{{ n.link }}" target="_blank" rel="noopener">abrir no Telegram</a>
-  </p>
-  {%- if n.arquivo_caminho and n.tipo in ('foto', 'audio', 'documento') %}
-  <p class="acoes"><a class="botao" href="/baixar/{{ n.id }}">Baixar</a></p>
-  {%- endif %}
-</article>
-{% else %}
-<p class="vazio">Nenhuma nota encontrada.</p>
-{% endfor %}
+{%- elif contagens.todas == 0 and not q %}
+<div class="vazio">
+  <h2>Seu caderno está vazio</h2>
+  <p>Mande uma mensagem, foto, link ou arquivo no grupo do Telegram. Ela aparece aqui em segundos.</p>
+  <p>Tem mensagens antigas? <a href="/importar">Importe uma exportação do Telegram Desktop</a>.</p>
 </div>
-{% endif %}
-{% if total > por_pagina %}
-<nav class="paginas">
+{%- elif q %}
+<div class="vazio">
+  <h2>Nada encontrado para “{{ q }}”</h2>
+  <p>A busca ignora maiúsculas e acentos e procura todas as palavras.</p>
+  <p><a class="botao" href="{{ href('', tipo, site) }}">Limpar busca</a></p>
+</div>
+{%- elif total and pagina > paginas %}
+<div class="vazio">
+  <h2>Não há mais notas aqui</h2>
+  <p><a class="botao" href="{{ href('', tipo, site) }}">Voltar à primeira página</a></p>
+</div>
+{%- else %}
+<div class="vazio">
+  <h2>Nenhuma nota nesta categoria</h2>
+  <p>Quando você mandar {{ plurais.get(tipo, 'notas') }} no grupo, elas aparecem aqui.</p>
+</div>
+{%- endif %}
+{%- if total > por_pagina and pagina <= paginas %}
+<nav class="paginas" aria-label="Páginas da lista">
   {% if pagina > 1 %}<a href="{{ consulta(pagina - 1) }}">← mais recentes</a>{% else %}<span></span>{% endif %}
   <span class="meta">página {{ pagina }} de {{ paginas }} · {{ total }} {{ 'links' if tipo == 'link' else 'notas' }}</span>
   {% if pagina < paginas %}<a href="{{ consulta(pagina + 1) }}">mais antigas →</a>{% else %}<span></span>{% endif %}
 </nav>
-{% endif %}
+{%- endif %}

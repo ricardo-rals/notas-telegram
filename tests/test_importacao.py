@@ -125,3 +125,36 @@ def test_importacao_grava_itens(sessao, config_teste):
         select(Nota.message_id, Link.site).join(Link, Link.nota_id == Nota.id)
     ).all()
     assert sorted(linhas) == [(301, "facebook.com"), (302, "youtube.com")]
+
+
+# --- 004 US7: exportações encontradas em Downloads -------------------------------------
+import os  # noqa: E402
+
+from notas.importacao import encontrar_exportacoes  # noqa: E402
+
+
+def _exportacao(base, nome, chat_id=1234567890, n=2, quebrada=False, mtime=None):
+    pasta = base / nome
+    pasta.mkdir(parents=True)
+    corpo = "{" if quebrada else json.dumps({"name": f"Chat {nome}", "id": chat_id, "messages": [{}] * n})
+    (pasta / "result.json").write_text(corpo, encoding="utf-8")
+    if mtime:
+        os.utime(pasta, (mtime, mtime))
+    return pasta
+
+
+def test_encontrar_exportacoes(tmp_path):
+    a, b = tmp_path / "Telegram Desktop", tmp_path / "Downloads"
+    _exportacao(a, "ChatExport_1", n=4, mtime=1_700_000_000)
+    _exportacao(b, "ChatExport_2", n=1, mtime=1_800_000_000)
+    _exportacao(b, "Outro", chat_id=9999999999, mtime=1_750_000_000)
+    _exportacao(b, "Ruim", quebrada=True, mtime=1_600_000_000)
+    (b / "sem_result").mkdir()
+    (b / "solto.txt").write_text("x")
+    r = encontrar_exportacoes([a, b, tmp_path / "inexistente"], -1001234567890)
+    assert [(e.pasta.name, e.situacao) for e in r] == [
+        ("ChatExport_2", "importavel"), ("Outro", "outro_chat"), ("ChatExport_1", "importavel"), ("Ruim", "ilegivel"),
+    ]
+    um = r[2]
+    assert um.mensagens == 4 and um.nome == "Chat ChatExport_1"
+    assert encontrar_exportacoes([b], -1001234567890, limite_s=0) == []

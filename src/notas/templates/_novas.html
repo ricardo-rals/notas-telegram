@@ -1,0 +1,5 @@
+<div id="novas" class="novas-slot" hx-get="/novas?desde={{ desde | urlencode }}" hx-trigger="every 10s" hx-swap="outerHTML" hx-target="this" hx-select="#novas" aria-live="polite">
+  {%- if n %}
+  <a class="novas" href="/" hx-get="/" hx-target="#painel" hx-select="#painel" hx-swap="outerHTML show:window:top" hx-push-url="true">{{ n }} {{ 'nota nova' if n == 1 else 'notas novas' }} · mostrar</a>
+  {%- endif %}
+</div>

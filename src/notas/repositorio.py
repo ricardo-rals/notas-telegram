@@ -113,6 +113,14 @@ def buscar(sessao: Session, q: str = "", tipo: str = "", pagina: int = 1) -> tup
     return list(itens), total
 
 
+def contar_novas(sessao: Session, desde: str) -> int:
+    """Notas mais novas que a primeira exibida (aviso da 004); `desde` vazio conta todas."""
+    filtro = select(func.count()).select_from(Nota)
+    if desde:
+        filtro = filtro.where(Nota.enviada_em > desde)
+    return sessao.scalar(filtro)
+
+
 def contar_por_tipo(sessao: Session) -> dict[str, int]:
     """Contagens do caderno inteiro (FR-002 da 002): uma por tipo, mais `falha` e `todas`.
     A aba link conta itens de link; as demais (e `todas`) contam notas (FR-002 da 003)."""

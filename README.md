@@ -57,6 +57,14 @@ Instagram e outros sites que exigem login costumam negar a prévia; o cartão en
 
 Depois de atualizar o código, rode `uv run --env-file .env alembic upgrade head`.
 
+## Painel
+
+Escuro por padrão (segue o tema claro do Windows). À esquerda, as categorias que você usa, com
+as contagens; à direita, os cartões, cada tipo no seu formato. Atalhos: `/` ou `Ctrl+K` busca,
+`Esc` limpa a busca e fecha a foto ampliada. Com o painel aberto, notas novas aparecem como um
+aviso "N notas novas · mostrar", sem recarregar o que você está vendo. Em **Importar**, as
+exportações do Telegram Desktop que estão em `Downloads` aparecem prontas para importar.
+
 ## Testes
 
 ```powershell

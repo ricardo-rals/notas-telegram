@@ -1,13 +1,44 @@
 {% extends "base.html" %}
 {% block titulo %}Importar exportação · Notas{% endblock %}
 {% block conteudo %}
+<main class="estreita">
 <h1>Importar exportação do Telegram Desktop</h1>
-<p>No Telegram Desktop: grupo → ⋮ → Exportar histórico, formato <strong>JSON</strong>.
-Informe a pasta que contém o <code>result.json</code>. Mensagens que já são notas não mudam.</p>
+<p class="fraco">Mensagens que já são notas não mudam; só as que faltam entram no caderno.</p>
+<div id="status">{% include "_status.html" %}</div>
+
+<h2>Encontradas nos seus downloads</h2>
+<section class="exportacoes">
+{%- for e in exportacoes %}
+  <div class="exportacao">
+    <div>
+      <strong>{{ e.nome or e.pasta.name }}</strong>
+      <span class="fraco">{{ e.pasta.name }} · {{ e.data.strftime('%d/%m/%Y') }}{% if e.situacao != 'ilegivel' %} · {{ e.mensagens }} mensagens{% endif %}</span>
+    </div>
+    {%- if e.situacao == 'importavel' %}
+    <form hx-post="/importar" hx-target="#status">
+      <input type="hidden" name="pasta" value="{{ e.pasta }}">
+      <button type="submit">Importar</button>
+    </form>
+    {%- elif e.situacao == 'outro_chat' %}
+    <span class="selo">outro chat</span>
+    {%- else %}
+    <span class="selo">exportação ilegível</span>
+    {%- endif %}
+  </div>
+{%- else %}
+  <div class="vazio esquerda">
+    <p>Nenhuma exportação encontrada em <code>Downloads</code>.</p>
+    <p>No Telegram Desktop: abra o grupo → ⋮ → <strong>Exportar histórico</strong>, formato <strong>JSON</strong>.
+    Ela é salva em <code>Downloads\Telegram Desktop</code> e aparece aqui.</p>
+  </div>
+{%- endfor %}
+</section>
+
+<h2>Ou informe a pasta</h2>
 <form class="importar" hx-post="/importar" hx-target="#status">
-  <label for="pasta">Pasta da exportação</label>
-  <input id="pasta" name="pasta" required size="60" placeholder="C:\Users\...\ChatExport_2026-11-05">
+  <label for="pasta" class="oculto">Pasta da exportação</label>
+  <input id="pasta" name="pasta" required placeholder="C:\Users\...\ChatExport_2026-11-05">
   <button type="submit">Importar</button>
 </form>
-<div id="status">{% include "_status.html" %}</div>
+</main>
 {% endblock %}

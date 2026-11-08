@@ -1,3 +1,4 @@
+import json
 import re
 import pytest
 from fastapi.testclient import TestClient
@@ -47,14 +48,9 @@ def test_parametros_invalidos(cliente, query):
     assert cliente.get(f"/?{query}").status_code == 422
 
 
-def test_sem_resultados(cliente):
-    assert "Nenhuma nota encontrada" in cliente.get("/?q=xyzxyz").text
-
-
-def test_htmx_devolve_fragmento(cliente, sessao):
+def test_sem_resultados(cliente, sessao):
     salvar_ao_vivo(sessao, nota(1))
-    r = cliente.get("/", headers={"HX-Request": "true"})
-    assert "nota 1" in r.text and "<html" not in r.text
+    assert "Nada encontrado para “xyzxyz”" in cliente.get("/?q=xyzxyz").text
 
 
 def test_busca_e_filtro(cliente, sessao):
@@ -64,12 +60,16 @@ def test_busca_e_filtro(cliente, sessao):
     assert "Reunião" in r.text and "reunião foto" not in r.text
 
 
-def test_atualizacao_automatica_so_na_primeira_pagina(cliente):
-    assert 'every 10s' in cliente.get("/").text
-    assert 'every 10s' not in cliente.get("/?pagina=2").text
+def test_aviso_de_novas_so_na_primeira_pagina_sem_filtro(cliente, sessao):
+    salvar_ao_vivo(sessao, nota(1))
+    assert 'id="novas"' in cliente.get("/").text
+    for q in ("/?pagina=2", "/?q=nota", "/?tipo=texto"):
+        assert 'id="novas"' not in cliente.get(q).text, q
 
 
 def test_previas_de_midia(cliente, sessao, config_teste):
+    config_teste.media_dir.mkdir(parents=True)
+    (config_teste.media_dir / "1_a.jpg").write_bytes(b"img")
     salvar_ao_vivo(sessao, nota(1, tipo="foto", texto="praia", arquivo_caminho="1_a.jpg"))
     salvar_ao_vivo(sessao, nota(2, tipo="audio", texto="", arquivo_caminho="2_b.ogg"))
     salvar_ao_vivo(sessao, nota(3, tipo="documento", arquivo_caminho="3_c.pdf", arquivo_nome="boleto.pdf"))
@@ -77,12 +77,12 @@ def test_previas_de_midia(cliente, sessao, config_teste):
     salvar_ao_vivo(sessao, nota(5, tipo="foto", situacao="sem_arquivo"))
     salvar_ao_vivo(sessao, nota(6, situacao="falha", erro="ValueError: quebrou"))
     html = cliente.get("/").text
-    assert '<img class="foto" loading="lazy" src="/media/1_a.jpg" alt="praia"' in html
+    assert re.search(r'<a class="ampliar" href="/media/1_a.jpg"[^>]*>\s*<img loading="lazy" src="/media/1_a.jpg" alt="praia"', html)
     assert '<audio controls src="/media/2_b.ogg"' in html
     assert "boleto.pdf" in html and re.search(r'href="/baixar/\d+">Baixar</a>', html)
     assert "acima de 20 MB" in html
     assert "não veio na exportação" in html
-    assert 'class="cartao nota falha"' in html and "ValueError: quebrou" in html
+    assert re.search(r'class="cartao nota tipo-\w+ falha"', html) and "ValueError: quebrou" in html
 
 
 def test_media(cliente, config_teste):
@@ -137,40 +137,40 @@ def test_importar_com_outra_rodando(cliente, sessao):
 # --- 002 US1: abas por tipo -----------------------------------------------------------
 import re  # noqa: E402
 
-ORDEM_ABAS = ["Todas", "Texto", "Link", "Foto", "Áudio", "Vídeo", "Documento", "Localização",
-              "Contato", "Outro", "Falhas"]
+def categorias(html):
+    nav = re.search(r'<nav aria-label="Categorias"[^>]*>(.*?)</nav>', html, re.S).group(1)
+    return [(href, bool(cur), rot.strip(), int(n)) for href, cur, rot, n in re.findall(
+        r'<a href="([^"]*)"( aria-current="page")?[^>]*>([^<]*)<span class="n">(\d+)</span></a>', nav)]
 
 
-def abas(html):
-    nav = re.search(r'<nav aria-label="Tipos"[^>]*>(.*?)</nav>', html, re.S).group(1)
-    return re.findall(r'<a href="([^"]*)"( aria-current="page")?>([^<]*)</a>', nav)
-
-
-def test_abas_com_contagens(cliente, sessao):
+def test_barra_lateral_so_com_tipos_usados(cliente, sessao):
     for i in range(1, 8):
         salvar_ao_vivo(sessao, nota(i, tipo="foto"))
     salvar_ao_vivo(sessao, nota(8, texto="palavra"))
-    a = abas(cliente.get("/").text)
-    assert [rot.rsplit(" (", 1)[0] for _, _, rot in a] == ORDEM_ABAS
-    assert dict((rot.rsplit(" (", 1)[0], rot.rsplit(" (", 1)[1]) for _, _, rot in a)["Foto"] == "7)"
-    assert "Vídeo (0)" in [rot for _, _, rot in a]
-    assert [rot for _, cur, rot in a if cur] == ["Todas (8)"]
+    c = categorias(cliente.get("/").text)
+    assert [(rot, n) for _, _, rot, n in c] == [("Todas", 8), ("Texto", 1), ("Foto", 7)]
+    assert [rot for _, cur, rot, _ in c if cur] == ["Todas"]
     # contagens ignoram a busca; links levam o q e não levam site/pagina
-    a = abas(cliente.get("/", params={"q": "palavra", "tipo": "foto", "pagina": 1}).text)
-    assert [rot for _, cur, rot in a if cur] == ["Foto (7)"]
-    assert all("q=palavra" in href and "site" not in href and "pagina" not in href for href, _, _ in a)
+    c = categorias(cliente.get("/", params={"q": "palavra", "tipo": "foto", "pagina": 1}).text)
+    assert [rot for _, cur, rot, _ in c if cur] == ["Foto"]
+    assert all("q=palavra" in href and "site" not in href and "pagina" not in href for href, _, _, _ in c)
+    # tipo do endereço sem notas aparece destacado; falha não é categoria
+    c = categorias(cliente.get("/?tipo=video").text)
+    assert ("Vídeo", 0) in [(rot, n) for _, _, rot, n in c] and "Falhas" not in [x[2] for x in c]
 
 
-def test_sem_select_e_tipo_oculto(cliente, sessao):
+def test_aviso_de_falhas(cliente, sessao):
+    salvar_ao_vivo(sessao, nota(1))
+    assert "aviso-falhas" not in cliente.get("/").text
+    salvar_ao_vivo(sessao, nota(2, situacao="falha", erro="x"))
+    salvar_ao_vivo(sessao, nota(3, situacao="falha", erro="y"))
+    assert re.search(r'<a class="aviso-falhas" href="/\?tipo=falha">\s*2 falhas', cliente.get("/").text)
+
+
+def test_tipo_oculto_na_busca(cliente, sessao):
     html = cliente.get("/?tipo=foto").text
     assert "<select" not in html
-    assert re.search(r'<input type="hidden" name="tipo" value="foto">', html)
-
-
-def test_fragmento_tem_abas(cliente, sessao):
-    salvar_ao_vivo(sessao, nota(1))
-    r = cliente.get("/", headers={"HX-Request": "true"})
-    assert '<nav aria-label="Tipos"' in r.text and "<html" not in r.text
+    assert re.search(r'<input type="hidden" id="f-tipo" name="tipo" value="foto"', html)
 
 
 # --- 002/003: botões de site e cartões de link -----------------------------------------
@@ -216,7 +216,7 @@ def test_filtrar_por_site(cliente, sessao):
     assert len(cartoes_link(html)) == 3 and "https://instagram.com/4/0" not in html
     ativo = [(href, rot) for href, cur, rot in botoes(html) if cur]
     assert ativo == [("/?q=yt&amp;tipo=link", "youtube.com (3)")]  # clicar de novo desmarca
-    assert '<input type="hidden" name="site" value="youtube.com">' in html
+    assert re.search(r'<input type="hidden" id="f-site" name="site" value="youtube.com"', html)
 
 
 def test_sem_site_e_site_inexistente(cliente, sessao):
@@ -227,7 +227,7 @@ def test_sem_site_e_site_inexistente(cliente, sessao):
     html = cliente.get("/?tipo=link&site=-").text
     assert len(cartoes_link(html)) == 2 and "link escondido" in html
     r = cliente.get("/?tipo=link&site=nao-existe.com")
-    assert r.status_code == 200 and "Nenhuma nota encontrada" in r.text
+    assert r.status_code == 200 and "Nenhuma nota nesta categoria" in r.text
 
 
 def test_paginacao_de_itens_preserva_site(cliente, sessao):
@@ -242,12 +242,12 @@ def test_mensagem_de_exemplo_aba_link_e_todas(cliente, sessao):
     salvar_ao_vivo(sessao, nota(60, tipo="link", texto=m.texto, enviada_em=m.enviada_em), itens=itens_de_link(m))
     html = cliente.get("/?tipo=link").text
     assert len(cartoes_link(html)) == 9
-    assert "instagram.com (8)" in html and "Link (9)" in html
+    assert "instagram.com (8)" in html and ("Link", 9) in [(r, n) for _, _, r, n in categorias(html)]
     assert "05/11/2026 12:40 · Usuario" in html and "05/11/2026 20:41 · Usuario" in html
     assert len(cartoes_link(cliente.get("/?tipo=link&site=instagram.com").text)) == 8
     todas = cliente.get("/").text
     assert todas.count('<article class="cartao nota') == 1 and len(cartoes_link(todas)) == 9
-    assert "Todas (1)" in todas
+    assert ("Todas", 1) in [(r, n) for _, _, r, n in categorias(todas)]
 
 
 # --- 003 US2: prévia no cartão e CSP ---------------------------------------------------
@@ -275,7 +275,7 @@ def test_cartao_com_previa_e_escape(cliente, sessao):
     assert '<p class="descricao">Pão</p>' in html
     assert "<h3>https://b.com/1/1</h3>" in html and "prévia indisponível" in html
     assert "<h3>https://c.com/1/2</h3>" in html  # pendente: só a URL
-    assert html.count("<img") == 1
+    assert html.split("<dialog")[0].count("<img") == 1  # o <img> do dialog da foto não conta
 
 
 def test_csp_em_toda_resposta(cliente):
@@ -370,6 +370,146 @@ def test_estrutura_do_layout(cliente, sessao):
     css = cliente.get("/static/painel.css").text if "/static/painel.css" in html else html
     for trecho in (":focus-visible", "repeat(auto-fill, minmax(260px, 1fr))", "overflow-wrap: anywhere"):
         assert trecho in css, trecho
-    doc = re.search(r'<article class="cartao nota">(.*?)</article>', html, re.S).group(1)
+    doc = re.search(r'<article class="cartao nota tipo-documento">(.*?)</article>', html, re.S).group(1)
     assert doc.index('class="conteudo"') < doc.index('class="meta"') < doc.index('class="acoes"')
-    assert re.search(r'<article class="cartao nota falha">.*?ValueError: x', html, re.S)
+    assert re.search(r'<article class="cartao nota tipo-texto falha">.*?ValueError: x', html, re.S)
+
+
+# --- 004: concha, cartões por tipo, notas novas, estados, importar ---------------------
+def painel(html):
+    return re.search(r'<div id="painel"[^>]*>', html).group(0)
+
+
+def test_concha(cliente, sessao):
+    salvar_ao_vivo(sessao, nota(1))
+    html = cliente.get("/").text
+    p = painel(html)
+    for attr in ('hx-boost="true"', 'hx-target="#painel"', 'hx-select="#painel"', 'hx-swap="outerHTML"'):
+        assert attr in p, attr
+    antes, depois = html.split('<div id="painel"', 1)
+    assert '<form id="filtros"' in antes and '<input id="q" type="search" name="q"' in antes
+    assert 'id="f-tipo"' in antes and 'id="f-site"' in antes
+    assert depois.count('hx-swap-oob="true"') == 2
+    assert re.search(r'<dialog id="foto"[^>]*>.*?<img.*?class="legenda".*?<button[^>]*class="fechar"', html, re.S)
+    assert '<script src="/static/painel.js" defer></script>' in html
+    assert "every 10s" not in html.split('id="novas"')[0]  # a lista não se recarrega sozinha
+
+
+def test_painel_js(cliente):
+    js = cliente.get("/static/painel.js")
+    assert js.status_code == 200
+    for trecho in ('"/"', "ctrlKey", "Escape", "showModal", "ampliar"):
+        assert trecho in js.text, trecho
+
+
+@pytest.mark.parametrize("nome,esperado", [
+    ("boleto.pdf", "PDF"), ("Planilha Final.XLSX", "XLSX"), ("sem_ext", "ARQ"),
+    ("arquivo.muitolongo", "ARQ"), (None, "ARQ"), ("a.tar.gz", "GZ"),
+])
+def test_filtro_extensao(nome, esperado):
+    from notas.painel import extensao
+    assert extensao(nome) == esperado
+
+
+@pytest.mark.parametrize("n,esperado", [
+    (None, ""), (0, "0 B"), (900, "900 B"), (230 * 1024, "230 KB"), (1468006, "1,4 MB"), (5 * 1024**3, "5,0 GB"),
+])
+def test_filtro_tamanho(n, esperado):
+    from notas.painel import tamanho
+    assert tamanho(n) == esperado
+
+
+def test_filtro_mapa_e_contato():
+    from notas.painel import contato, mapa
+    assert mapa("-23.55052, -46.633308") == (
+        "https://www.openstreetmap.org/?mlat=-23.55052&mlon=-46.633308#map=16/-23.55052/-46.633308")
+    for ruim in ("", "abc", "91, 10", "10, 200", "1,2,3"):
+        assert mapa(ruim) is None, ruim
+    assert contato("Maria da Silva, +55 11 99999-0000") == ("Maria da Silva", "+55 11 99999-0000", "tel:+5511999990000")
+    assert contato("Só nome") == ("Só nome", "", None)
+
+
+def cartao(html, tipo):
+    return re.search(rf'<article class="cartao nota tipo-{tipo}[^"]*">(.*?)</article>', html, re.S).group(1)
+
+
+def test_cartoes_por_tipo(cliente, sessao, config_teste):
+    salvar_ao_vivo(sessao, nota(1, tipo="foto", texto="sumiu", arquivo_caminho="1_x.jpg"))  # arquivo ausente
+    salvar_ao_vivo(sessao, nota(2, tipo="documento", texto="", arquivo_caminho="2.pdf",
+                                arquivo_nome="boleto.pdf", arquivo_tamanho=230 * 1024))
+    salvar_ao_vivo(sessao, nota(3, tipo="localizacao", texto="-23.55052, -46.633308"))
+    salvar_ao_vivo(sessao, nota(4, tipo="contato", texto="Maria, +55 11 99999-0000"))
+    salvar_ao_vivo(sessao, nota(5, texto="curto"))
+    salvar_ao_vivo(sessao, nota(6, texto="x" * 200))
+    salvar_ao_vivo(sessao, nota(7, tipo="video", texto="filme"))
+    html = cliente.get("/").text
+    foto = cartao(html, "foto")
+    assert "imagem indisponível" in foto and "<img" not in foto
+    doc = cartao(html, "documento")
+    assert '<span class="selo">PDF</span>' in doc and "boleto.pdf" in doc and "230 KB" in doc
+    loc = cartao(html, "localizacao")
+    assert 'href="https://www.openstreetmap.org/?mlat=-23.55052&amp;mlon=-46.633308' in loc
+    assert 'target="_blank" rel="noopener noreferrer">Abrir no mapa</a>' in loc
+    cont = cartao(html, "contato")
+    assert '<a href="tel:+5511999990000">+55 11 99999-0000</a>' in cont and "Maria" in cont
+    assert re.search(r'<div class="texto curto">curto</div>', html)
+    assert re.search(r'<div class="texto">x{200}</div>', html)
+    assert "não é baixado" in cartao(html, "video")
+
+
+def test_contar_novas_e_rota(cliente, sessao):
+    from notas.repositorio import contar_novas
+    topo = "2026-11-05T10:00:00+00:00"
+    salvar_ao_vivo(sessao, nota(1, enviada_em=topo))
+    assert contar_novas(sessao, topo) == 0 and contar_novas(sessao, "") == 1
+    r = cliente.get("/novas", params={"desde": topo})
+    assert r.status_code == 200 and 'id="novas"' in r.text and 'hx-trigger="every 10s"' in r.text
+    assert 'class="novas"' not in r.text
+    salvar_ao_vivo(sessao, nota(2, enviada_em="2026-11-05T11:00:00+00:00"))
+    assert "1 nota nova · mostrar" in cliente.get("/novas", params={"desde": topo}).text
+    salvar_ao_vivo(sessao, nota(3, enviada_em="2026-11-05T12:00:00+00:00"))
+    salvar_ao_vivo(sessao, nota(4, enviada_em="2026-11-05T13:00:00+00:00"))
+    assert "3 notas novas · mostrar" in cliente.get("/novas", params={"desde": topo}).text
+    assert "/novas?desde=2026-11-05T13%3A00%3A00%2B00%3A00" in cliente.get("/").text
+
+
+def test_estados_vazios(cliente, sessao):
+    html = cliente.get("/").text
+    assert "Seu caderno está vazio" in html and 'href="/importar"' in html
+    salvar_ao_vivo(sessao, nota(1))
+    html = cliente.get("/?q=inexistente&tipo=texto").text
+    assert "Nada encontrado para “inexistente”" in html
+    assert re.search(r'href="/\?tipo=texto"[^>]*>Limpar busca', html)
+    html = cliente.get("/?pagina=5").text
+    assert "Não há mais notas aqui" in html and re.search(r'href="/"[^>]*>Voltar à primeira página', html)
+    assert "Nenhuma nota nesta categoria" in cliente.get("/?tipo=foto").text
+    assert '<div class="fantasmas" aria-hidden="true">' in html
+
+
+def criar_exportacao(base, nome, chat_id=1234567890, mensagens=3, quebrada=False):
+    pasta = base / nome
+    pasta.mkdir(parents=True)
+    corpo = "{quebrado" if quebrada else json.dumps(
+        {"name": "Caderno", "type": "private_supergroup", "id": chat_id,
+         "messages": [{"id": i, "type": "message"} for i in range(mensagens)]})
+    (pasta / "result.json").write_text(corpo, encoding="utf-8")
+    return pasta
+
+
+def test_importar_lista_exportacoes(engine, config_teste, tmp_path):
+    import os
+    base = tmp_path / "Downloads"
+    velha = criar_exportacao(base, "ChatExport_2026-10-01", mensagens=5)
+    nova = criar_exportacao(base, "ChatExport_2026-11-01", mensagens=7)
+    os.utime(velha, (1_700_000_000, 1_700_000_000))
+    criar_exportacao(base, "ChatExport_outro", chat_id=9999999999)
+    criar_exportacao(base, "ChatExport_ruim", quebrada=True)
+    cli = TestClient(criar_app(config_teste, engine, pastas_exportacao=[base]), base_url=BASE_URL)
+    html = cli.get("/importar").text
+    sec = re.search(r'<section class="exportacoes">(.*?)</section>', html, re.S).group(1)
+    pastas = re.findall(r'name="pasta" value="([^"]+)"', sec)
+    assert pastas == [str(nova), str(velha)]  # só importáveis, mais recente primeiro
+    assert "7 mensagens" in sec and "outro chat" in sec and "exportação ilegível" in sec
+    vazio = TestClient(criar_app(config_teste, engine, pastas_exportacao=[tmp_path / "nada"]), base_url=BASE_URL)
+    html = vazio.get("/importar").text
+    assert "Exportar histórico" in html and 'name="pasta"' in html  # instrução + campo manual

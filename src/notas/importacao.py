@@ -3,7 +3,10 @@
 import json
 import shutil
 import sys
+import time
 from collections import Counter
+from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 
 from sqlalchemy.orm import Session
@@ -27,7 +30,7 @@ from notas.repositorio import (
     salvar_importada,
 )
 
-__all__ = ["ErroImportacao", "ImportacaoEmAndamento", "executar", "importar", "main"]
+__all__ = ["ErroImportacao", "Exportacao", "encontrar_exportacoes", "ImportacaoEmAndamento", "executar", "importar", "main"]
 
 
 class ErroImportacao(Exception):
@@ -49,6 +52,47 @@ def ler_exportacao(pasta: Path, cfg: Config) -> tuple[int, list]:
     if chat_id != cfg.chat_id:
         raise ErroImportacao(f"a exportação é do chat {chat_id}, não do grupo configurado {cfg.chat_id}")
     return chat_id, mensagens
+
+
+@dataclass(frozen=True)
+class Exportacao:
+    pasta: Path
+    nome: str
+    data: datetime
+    mensagens: int
+    situacao: str  # importavel | outro_chat | ilegivel
+
+
+def encontrar_exportacoes(pastas: list[Path], chat_id: int, limite_s: float = 2.0) -> list[Exportacao]:
+    """Exportações (filhos diretos com result.json) nas pastas de downloads, mais recente primeiro.
+    Nunca levanta; para ao passar de `limite_s` e devolve o que leu (FR-016 da 004).
+    ponytail: lê o result.json inteiro para contar as mensagens; com exportações de centenas de MB,
+    trocar por um parser incremental que só conte."""
+    fim = time.monotonic() + limite_s
+    achadas: list[Exportacao] = []
+    for base in pastas:
+        try:
+            filhos = sorted(base.iterdir(), key=lambda f: not f.name.startswith("ChatExport"))
+        except OSError:
+            continue
+        for pasta in filhos:
+            if time.monotonic() >= fim:
+                return sorted(achadas, key=lambda e: e.data, reverse=True)
+            try:
+                arquivo = pasta / "result.json"
+                if not (pasta.is_dir() and arquivo.is_file()):
+                    continue
+                data = datetime.fromtimestamp(pasta.stat().st_mtime)
+            except OSError:
+                continue
+            try:
+                d = json.loads(arquivo.read_text(encoding="utf-8"))
+                mensagens = d["messages"]
+                situacao = "importavel" if chat_id_exportacao(int(d["id"])) == chat_id else "outro_chat"
+                achadas.append(Exportacao(pasta, str(d.get("name") or ""), data, len(mensagens), situacao))
+            except Exception:
+                achadas.append(Exportacao(pasta, "", data, 0, "ilegivel"))
+    return sorted(achadas, key=lambda e: e.data, reverse=True)
 
 
 def _processar_item(item: dict, pasta: Path, chat_id: int, sessao: Session, cfg: Config) -> str:
