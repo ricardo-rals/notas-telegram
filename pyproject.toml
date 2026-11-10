@@ -16,6 +16,7 @@ dependencies = [
     "python-multipart>=0.0.33",
     "python-telegram-bot>=21",
     "sqlalchemy>=2",
+    "telethon>=1.45.0",
     "uvicorn>=0.54.0",
 ]
 
