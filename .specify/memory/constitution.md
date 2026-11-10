@@ -1,17 +1,15 @@
 <!--
 Sync Impact Report
-- Versão: 1.0.0 → 1.1.0 (MINOR: orientação materialmente ampliada, nenhum princípio removido)
+- Versão: 1.1.0 → 2.0.0 (MAJOR: redefinição incompatível dos Princípios IV, VI e VII)
 - Princípios modificados:
-  - I. Tudo Local: novo item (c), download único de pesos de modelos locais num comando
-    explícito de instalação; inferência sempre offline
-  - II. Regra Antes de Modelo: transcrição de áudio e leitura de texto em imagens nomeadas
-    como casos em que regra não resolve
-  - III. ML com Avaliação Obrigatória: métricas por tarefa (WER, CER), conjunto de avaliação
-    fora do repositório e execução desligável
-- Seções modificadas: Restrições Técnicas (Rede, Processos, Modelos)
-- Seções adicionadas/removidas: nenhuma
+  - IV. Privacidade: o armazenamento passa de "um arquivo SQLite" para "um banco PostgreSQL
+    local, só em 127.0.0.1"; credenciais só no .env
+  - VI. Simplicidade: "um arquivo de banco" → "um banco PostgreSQL local"
+  - VII. Só APIs Oficiais: permitido um cliente MTProto oficial (api_id do próprio dono, via
+    my.telegram.org) logado na conta do dono, só para LER o grupo configurado; sessão fora do repo
+- Seções modificadas: Restrições Técnicas (Armazenamento, Segredos)
 - Templates: plan/spec/tasks leem a constituição em tempo de execução; nada alterado aqui
-- TODOs adiados: nenhum
+- Pendências: migração SQLite → PostgreSQL (fatia 007); sincronização (fatia 008)
 -->
 
 # Notas Telegram Constitution
@@ -62,8 +60,9 @@ Razão: sem medida no mesmo conjunto, "melhorou" é opinião.
 
 ### IV. Privacidade
 
-Os dados MUST ficar em um único arquivo SQLite fora do repositório. MUST NOT entrar no Git:
-token, banco de dados ou mensagem real. Testes MUST usar apenas mensagens inventadas.
+Os dados MUST ficar em um único banco PostgreSQL rodando no próprio computador e acessado só
+por `127.0.0.1`. MUST NOT entrar no Git: token, senha do banco, sessão do Telegram, backup ou
+mensagem real; credenciais ficam só no `.env`. Testes MUST usar apenas mensagens inventadas.
 O painel MUST escutar somente em `127.0.0.1`.
 
 Razão: o conteúdo vem de um grupo privado; vazamento não tem volta.
@@ -77,7 +76,7 @@ Razão: são as partes onde um erro silencioso corrompe ou perde dados.
 
 ### VI. Simplicidade
 
-A arquitetura é: um processo para o bot, um processo para o painel, um arquivo de banco.
+A arquitetura é: um processo para o bot, um processo para o painel, um banco PostgreSQL local.
 Fila, contêiner, serviço externo ou processo adicional MUST NOT ser introduzido sem
 necessidade medida e registrada no plano.
 
@@ -85,9 +84,12 @@ Razão: projeto pessoal; cada peça a mais é manutenção sem retorno.
 
 ### VII. Só APIs Oficiais
 
-Fontes permitidas: Telegram Bot API e a exportação do Telegram Desktop. WhatsApp MUST entrar
-apenas por arquivo exportado. MUST NOT usar clientes não oficiais, userbots ou scraping
-de aplicativos de mensagem.
+Fontes permitidas: Telegram Bot API, a exportação do Telegram Desktop e a API MTProto oficial
+do Telegram, por uma biblioteca cliente, com `api_id` do próprio dono e logada na conta dele,
+**somente para ler** mensagens do grupo configurado (sincronização). Esse cliente MUST NOT
+enviar, editar ou apagar mensagens, nem ler outros chats; o arquivo de sessão MUST ficar fora
+do repositório. WhatsApp MUST entrar apenas por arquivo exportado. MUST NOT usar clientes não
+oficiais nem scraping de aplicativos de mensagem.
 
 Razão: evita banimento de conta e quebra por mudanças não documentadas.
 
@@ -100,14 +102,15 @@ Razão: perda silenciosa é pior que erro; o dono precisa ver e corrigir.
 
 ## Restrições Técnicas
 
-- Armazenamento: exatamente um arquivo SQLite, com caminho configurável fora do repositório.
+- Armazenamento: exatamente um banco PostgreSQL local (`127.0.0.1`), configurado por
+  `DATABASE_URL` no `.env`; testes usam um banco separado cujo nome termina em `_test`.
 - Rede: apenas Telegram, busca de metadados de links (desligável) e download único de pesos
   de modelos locais num comando de instalação. Sem LLM, sem API paga.
 - Modelos: pesos ficam fora do repositório (pasta ignorada pelo Git ou pasta de dados do
   usuário); inferência local, desligável por configuração.
 - Exposição: o painel faz bind só em `127.0.0.1`; nada escuta em interface pública.
-- Segredos: token e configuração local ficam fora do Git; o repositório versiona só um
-  exemplo de configuração sem valores reais.
+- Segredos: token, senha do banco, `api_hash` e sessão do Telegram ficam fora do Git; o
+  repositório versiona só um exemplo de configuração sem valores reais.
 - Processos: bot e painel são os únicos processos de longa duração; transcrição e OCR rodam
   em segundo plano dentro deles, nunca num serviço à parte sem justificativa medida (VI).
 
@@ -136,4 +139,4 @@ Versionamento semântico:
 Todo `plan.md` e toda revisão de implementação MUST verificar conformidade com os princípios
 I a VIII.
 
-**Version**: 1.1.0 | **Ratified**: 2026-11-05 | **Last Amended**: 2026-11-08
+**Version**: 2.0.0 | **Ratified**: 2026-11-05 | **Last Amended**: 2026-11-10
