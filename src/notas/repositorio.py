@@ -122,11 +122,25 @@ def _do_grupo(grupo: str):
     return casa(GRUPOS_DOCUMENTO.get(grupo, ("", ()))[1])
 
 
+def _casa_links(fts: str):
+    """Notas com algum link cujo autor/site/endereço ou prévia casa com a busca (FR-001 da 008)."""
+    return Nota.id.in_(
+        select(Link.nota_id).outerjoin(Previa, Previa.url == Link.url)
+        .where(_casa(literal_column("link.busca"), fts) | _casa(literal_column("previa.busca"), fts))
+    )
+
+
 def buscar(
-    sessao: Session, q: str = "", tipo: str = "", pagina: int = 1, tag: str = "", grupo: str = ""
+    sessao: Session, q: str = "", tipo: str = "", pagina: int = 1, tag: str = "", grupo: str = "",
+    de: str | None = None, ate: str | None = None,
 ) -> tuple[list[Nota], int]:
-    """Lista de notas (todas as abas, exceto a de links, que usa `buscar_links`)."""
+    """Lista de notas (todas as abas, exceto a de links, que usa `buscar_links`).
+    `de`/`ate` são ISO UTC, comparados como texto com `enviada_em` (gravada no mesmo formato)."""
     filtro = select(Nota)
+    if de:
+        filtro = filtro.where(Nota.enviada_em >= de)
+    if ate:
+        filtro = filtro.where(Nota.enviada_em <= ate)
     if tag:
         filtro = filtro.where(_com_tag(tag))
     if grupo:
@@ -135,7 +149,7 @@ def buscar(
         fts = consulta_fts(q)
         if fts is None:
             return [], 0
-        filtro = filtro.where(_casa(literal_column("nota.busca"), fts))
+        filtro = filtro.where(_casa(literal_column("nota.busca"), fts) | _casa_links(fts))
     if tipo == "falha":
         filtro = filtro.where(Nota.situacao == "falha")
     elif tipo:
@@ -200,7 +214,8 @@ def contar_sites(sessao: Session) -> list[tuple[str, int]]:
 
 
 def buscar_links(
-    sessao: Session, site: str | None = None, q: str = "", pagina: int = 1, tag: str = ""
+    sessao: Session, site: str | None = None, q: str = "", pagina: int = 1, tag: str = "",
+    de: str | None = None, ate: str | None = None,
 ) -> tuple[list[tuple[Link, Nota, Previa | None]], int]:
     """Aba Link: um item por link (FR-002), do mais recente ao mais antigo pela data do item
     (FR-017). `q` casa com o texto da nota ou com a prévia; `site=''` = sem site identificado."""
@@ -209,12 +224,17 @@ def buscar_links(
         filtro = filtro.where(Link.site == site)
     if tag:
         filtro = filtro.where(_com_tag(tag))
+    if de:
+        filtro = filtro.where(Link.data >= de)
+    if ate:
+        filtro = filtro.where(Link.data <= ate)
     if q.strip():
         fts = consulta_fts(q)
         if fts is None:
             return [], 0
         filtro = filtro.where(
             _casa(literal_column("nota.busca"), fts) | _casa(literal_column("previa.busca"), fts)
+            | _casa(literal_column("link.busca"), fts)
         )
     total = sessao.scalar(select(func.count()).select_from(filtro.subquery()))
     linhas = sessao.execute(

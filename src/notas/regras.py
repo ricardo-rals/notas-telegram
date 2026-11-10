@@ -379,3 +379,17 @@ GRUPOS_DOCUMENTO = {  # (valor, rótulo, extensões); a ordem é a dos botões
 def grupo_documento(nome: str | None) -> str:
     ext = (nome or "").rsplit(".", 1)[-1].lower() if "." in (nome or "") else ""
     return next((g for g, (_, exts) in GRUPOS_DOCUMENTO.items() if ext in exts), "outro")
+
+
+# --- 008: período ------------------------------------------------------------------------
+FUSO_LOCAL = None  # None = fuso do computador; os testes trocam por um fixo
+
+
+def periodo_utc(valor: str | None, fim: bool) -> str | None:
+    """`AAAA-MM-DDTHH:MM` no fuso local (input datetime-local) → ISO UTC, como as datas gravadas.
+    O fim do período inclui o minuto inteiro (":59"). Formato inválido levanta ValueError."""
+    if not valor:
+        return None
+    dt = datetime.strptime(valor, "%Y-%m-%dT%H:%M").replace(second=59 if fim else 0)
+    dt = dt.replace(tzinfo=FUSO_LOCAL) if FUSO_LOCAL else dt.astimezone()
+    return dt.astimezone(UTC).isoformat(timespec="seconds")

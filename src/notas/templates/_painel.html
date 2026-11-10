@@ -21,6 +21,11 @@
       {{ falhas }} {{ 'falha' if falhas == 1 else 'falhas' }} · ver</a>
     {%- endif %}
     {%- if novas_desde is not none %}{% set desde = novas_desde %}{% set n = 0 %}{% include "_novas.html" %}{% endif %}
+    <nav aria-label="Período" class="abas periodo-atalhos">
+    {%- for rotulo, url in atalhos %}
+      {%- if rotulo != 'Limpar período' or de or ate %}<a href="{{ url }}">{{ rotulo }}</a>{% endif %}
+    {%- endfor %}
+    </nav>
     {%- if tipo == 'falha' %}<h1 class="titulo">Falhas</h1>{% endif %}
     {% include "_notas.html" %}
     <div class="fantasmas" aria-hidden="true">

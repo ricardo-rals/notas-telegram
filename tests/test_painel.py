@@ -579,3 +579,35 @@ def test_importar_mostra_estado_do_backup(cliente, config_teste):
         assert "PermissionError: negado" in cliente.get("/importar").text
     finally:
         backup.ULTIMO_ERRO["mensagem"] = None
+
+
+# --- 008: período e busca ampliada no painel --------------------------------------------
+def test_periodo_no_painel(cliente, sessao, monkeypatch):
+    from datetime import timedelta, timezone
+
+    from notas import regras
+    monkeypatch.setattr(regras, "FUSO_LOCAL", timezone(timedelta(hours=-3)))
+    salvar_ao_vivo(sessao, nota(1, texto="antiga #x", enviada_em="2026-11-01T10:00:00+00:00"))
+    salvar_ao_vivo(sessao, nota(2, texto="nova #x", enviada_em="2026-11-05T10:00:00+00:00"))
+    html = cliente.get("/", params={"de": "2026-11-03T00:00"}).text
+    assert "nova" in html and "antiga" not in html
+    form = html.split('<div id="painel"')[0]
+    assert re.search(r'<input type="datetime-local" id="de" name="de" value="2026-11-03T00:00"', form)
+    assert re.search(r'<input type="datetime-local" id="ate" name="ate" value=""', form)
+    # o período segue em categorias, tags e etiquetas
+    assert all("de=2026-11-03T00%3A00" in href for href, _, _, _ in categorias(html))
+    assert all("de=2026-11-03T00%3A00" in href for href, _, _, _ in secao_tags(html))
+    assert "antiga" in cliente.get("/", params={"ate": "2026-11-02T00:00"}).text
+    assert "Nada encontrado" in cliente.get("/", params={"de": "2026-11-06T00:00", "ate": "2026-11-01T00:00"}).text \
+        or "Nenhuma nota" in cliente.get("/", params={"de": "2026-11-06T00:00", "ate": "2026-11-01T00:00"}).text
+    assert cliente.get("/", params={"de": "03/11/2026"}).status_code == 422
+    atalhos = re.search(r'<nav aria-label="Período"[^>]*>(.*?)</nav>', html, re.S).group(1)
+    assert re.findall(r">([^<]+)</a>", atalhos) == ["Hoje", "7 dias", "30 dias", "Limpar período"]
+    assert 'id="novas"' not in html  # com período não há aviso de notas novas
+
+
+def test_busca_ampliada_no_painel(cliente, sessao):
+    link_com_sites(sessao, 1, ["instagram.com"], texto="https://instagram.com/1/0")
+    previa(sessao, "https://instagram.com/1/0", titulo="Luis Eduardo Montenegro on Instagram")
+    assert "Luis Eduardo Montenegro" in cliente.get("/", params={"q": "montenegro"}).text
+    assert len(cartoes_link(cliente.get("/", params={"q": "montenegro", "tipo": "link"}).text)) == 1

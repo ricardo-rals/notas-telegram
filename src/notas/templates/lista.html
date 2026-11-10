@@ -2,14 +2,20 @@
 {% block busca %}
 <form id="filtros" class="busca" action="/" method="get" role="search"
       hx-get="/" hx-target="#painel" hx-select="#painel" hx-swap="outerHTML" hx-push-url="true"
-      hx-indicator="#painel" hx-trigger="input changed delay:300ms from:#q, search from:#q, submit">
+      hx-indicator="#painel" hx-trigger="input changed delay:300ms from:#q, search from:#q, change from:.periodo input, submit">
   <label for="q" class="oculto">Buscar</label>
-  <input id="q" type="search" name="q" value="{{ q }}" placeholder="Buscar" autocomplete="off">
-  <kbd aria-hidden="true">/</kbd>
+  <span class="campo"><input id="q" type="search" name="q" value="{{ q }}" placeholder="Buscar em notas, links e prévias" autocomplete="off">
+  <kbd aria-hidden="true">/</kbd></span>
   <input type="hidden" id="f-tipo" name="tipo" value="{{ tipo }}">
   <input type="hidden" id="f-site" name="site" value="{{ site }}">
   <input type="hidden" id="f-tag" name="tag" value="{{ tag }}">
   <input type="hidden" id="f-grupo" name="grupo" value="{{ grupo }}">
+  <div class="periodo">
+    <label for="de">de</label>
+    <input type="datetime-local" id="de" name="de" value="{{ de }}">
+    <label for="ate">até</label>
+    <input type="datetime-local" id="ate" name="ate" value="{{ ate }}">
+  </div>
 </form>
 {% endblock %}
 {% block conteudo %}

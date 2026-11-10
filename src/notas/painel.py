@@ -20,7 +20,7 @@ from notas.db import TIPOS, Nota, criar_engine, exigir_revisao_atual
 from notas.importacao import encontrar_exportacoes, executar
 from notas import backup
 from notas.previas import iniciar_thread
-from notas.regras import GRUPOS_DOCUMENTO
+from notas.regras import GRUPOS_DOCUMENTO, periodo_utc
 from notas.repositorio import (
     POR_PAGINA,
     ImportacaoEmAndamento,
@@ -53,9 +53,10 @@ ROTULOS_PLURAIS = {
 PASTAS_EXPORTACAO = [Path.home() / "Downloads" / "Telegram Desktop", Path.home() / "Downloads"]
 
 
-def href(q: str = "", tipo: str = "", site: str = "", pagina: int | None = None, tag: str = "", grupo: str = "") -> str:
+def href(q: str = "", tipo: str = "", site: str = "", pagina: int | None = None, tag: str = "", grupo: str = "",
+         de: str = "", ate: str = "") -> str:
     """Endereço da lista só com os parâmetros preenchidos (FR-009 da 002)."""
-    params = {"q": q, "tipo": tipo, "site": site, "tag": tag, "grupo": grupo, "pagina": pagina}
+    params = {"q": q, "tipo": tipo, "site": site, "tag": tag, "grupo": grupo, "de": de, "ate": ate, "pagina": pagina}
     query = urlencode({k: v for k, v in params.items() if v})
     return f"/?{query}" if query else "/"
 
@@ -97,6 +98,20 @@ def contato(texto: str | None) -> tuple[str, str, str | None]:
     return nome.strip(), tel, f"tel:{digitos}" if digitos else None
 
 
+def atalhos_periodo(q, tipo, site, tag, grupo) -> list[tuple[str, str]]:
+    """Hoje, 7 dias, 30 dias e limpar (FR-004 da 008), no formato do input datetime-local."""
+    agora = datetime.now()
+    hoje = agora.replace(hour=0, minute=0, second=0, microsecond=0)
+    fmt = "%Y-%m-%dT%H:%M"
+    base = dict(q=q, tipo=tipo, site=site, tag=tag, grupo=grupo)
+    return [
+        ("Hoje", href(**base, de=hoje.strftime(fmt))),
+        ("7 dias", href(**base, de=(agora - timedelta(days=7)).strftime(fmt))),
+        ("30 dias", href(**base, de=(agora - timedelta(days=30)).strftime(fmt))),
+        ("Limpar período", href(**base)),
+    ]
+
+
 def data_local(iso: str) -> str:
     try:
         return datetime.fromisoformat(iso).astimezone().strftime("%d/%m/%Y %H:%M")
@@ -130,19 +145,23 @@ def criar_app(cfg: Config, engine: Engine, iniciar_previas=iniciar_thread, pasta
 
     @app.get("/")
     def lista(request: Request, q: str = "", tipo: str = "", site: str = "", tag: str = "", grupo: str = "",
-              pagina: int = Query(1, ge=1)):
+              de: str = "", ate: str = "", pagina: int = Query(1, ge=1)):
         if tipo and tipo not in TIPOS and tipo != "falha":
             raise HTTPException(422, "tipo inválido")
+        try:
+            de_utc, ate_utc = periodo_utc(de, fim=False), periodo_utc(ate, fim=True)
+        except ValueError:
+            raise HTTPException(422, "data inválida (use AAAA-MM-DDTHH:MM)") from None
         with Session(engine) as sessao:
             # site na URL: "-" = sem site identificado (''), vazio = todos; outro valor vai como veio (FR-015 da 002)
             filtro_site = {"": None, "-": ""}.get(site, site)
             notas, links, links_por_nota, sites = [], [], {}, []
             if tipo == "link":  # aba Link: um item por link (FR-002 da 003)
-                links, total = buscar_links(sessao, site=filtro_site, q=q, pagina=pagina, tag=tag)
+                links, total = buscar_links(sessao, site=filtro_site, q=q, pagina=pagina, tag=tag, de=de_utc, ate=ate_utc)
                 sites = contar_sites(sessao)
             else:
                 notas, total = buscar(sessao, q=q, tipo=tipo, pagina=pagina, tag=tag,
-                                      grupo=grupo if tipo == "documento" else "")
+                                      grupo=grupo if tipo == "documento" else "", de=de_utc, ate=ate_utc)
                 links_por_nota = links_das_notas(sessao, [n.id for n in notas if n.tipo == "link"])
             contagens = contar_por_tipo(sessao)
             categorias = [("", "Todas", contagens["todas"])] + [
@@ -154,18 +173,21 @@ def criar_app(cfg: Config, engine: Engine, iniciar_previas=iniciar_thread, pasta
             grupos = contar_grupos_documento(sessao) if tipo == "documento" else []
             # aviso de notas novas só na 1ª página sem filtro (FR-008 da 004)
             novas = None
-            if pagina == 1 and not (q or tipo or site or tag):
+            if pagina == 1 and not (q or tipo or site or tag or de or ate):
                 novas = notas[0].enviada_em if notas else ""
             contexto = {
                 "notas": notas, "links": links, "links_por_nota": links_por_nota,
                 "total": total, "q": q, "tipo": tipo, "pagina": pagina,
                 "por_pagina": POR_PAGINA, "paginas": max(1, math.ceil(total / POR_PAGINA)),
                 "rotulos": ROTULOS, "plurais": ROTULOS_PLURAIS, "categorias": categorias,
-                "contagens": contagens, "falhas": contagens["falha"], "href": href,
+                "contagens": contagens, "falhas": contagens["falha"],
+                # todo link do painel leva o período junto (FR-003 da 008)
+                "href": lambda *a, **k: href(*a, **({"de": de, "ate": ate} | k)),
+                "de": de, "ate": ate, "atalhos": atalhos_periodo(q, tipo, site, tag, grupo),
                 "sites": sites, "site": site, "fotos": fotos, "novas_desde": novas,
                 "tag": tag, "tags": contar_tags(sessao), "tags_por_nota": tags_das_notas(sessao, ids),
                 "grupo": grupo, "grupos": [(g, GRUPOS_DOCUMENTO[g][0], n) for g, n in grupos],
-                "consulta": lambda p: href(q, tipo, site, pagina=p, tag=tag, grupo=grupo),
+                "consulta": lambda p: href(q, tipo, site, pagina=p, tag=tag, grupo=grupo, de=de, ate=ate),
             }
             # renderiza com a sessão aberta: os objetos ainda são lidos no template
             return templates.TemplateResponse(request, "lista.html", contexto)

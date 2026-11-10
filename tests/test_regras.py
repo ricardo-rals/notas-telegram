@@ -281,3 +281,17 @@ def test_tags(texto, esperado):
 ])
 def test_grupo_documento(nome, grupo):
     assert grupo_documento(nome) == grupo
+
+
+# --- 008: período ------------------------------------------------------------------------
+def test_periodo_utc(monkeypatch):
+    from datetime import datetime, timezone, timedelta
+
+    from notas import regras
+    monkeypatch.setattr(regras, "FUSO_LOCAL", timezone(timedelta(hours=-3)))
+    assert regras.periodo_utc("2026-11-03T09:30", fim=False) == "2026-11-03T12:30:00+00:00"
+    assert regras.periodo_utc("2026-11-03T09:30", fim=True) == "2026-11-03T12:30:59+00:00"
+    assert regras.periodo_utc("", fim=False) is None
+    for ruim in ("03/11/2026", "2026-13-01T00:00", "abc"):
+        with pytest.raises(ValueError):
+            regras.periodo_utc(ruim, fim=False)

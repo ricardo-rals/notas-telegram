@@ -451,3 +451,69 @@ def test_tags_com_10000_notas_em_menos_de_1s(sessao):
         inicio = time.perf_counter()
         f()
         assert time.perf_counter() - inicio < 1.0
+
+
+# --- 008: busca ampliada e período --------------------------------------------------------
+def test_busca_acha_previa_autor_site_url_e_arquivo(sessao):
+    from notas.repositorio import registrar_previa
+    salvar_ao_vivo(sessao, dados(1, tipo="link", texto="https://insta.com/p/1"),
+                   itens=[item(0, "https://www.instagram.com/p/abc", "instagram.com", autor="Usuario")])
+    registrar_previa(sessao, "https://www.instagram.com/p/abc",
+                     SimpleNamespace(situacao="ok", definitiva=False, titulo="Luis Eduardo Montenegro on Instagram",
+                                     descricao="Olho nos processos", imagem=None, erro=None), AGORA)
+    salvar_ao_vivo(sessao, dados(2, tipo="link", texto="vídeo"), itens=[item(0, "https://youtu.be/x", "youtube.com")])
+    salvar_ao_vivo(sessao, dados(3, tipo="documento", texto="", arquivo_nome="Relatório anual.pdf"))
+    salvar_ao_vivo(sessao, dados(4, texto="falar com Luiz amanhã"))
+    ids = lambda **kw: sorted(n.message_id for n in buscar(sessao, **kw)[0])  # noqa: E731
+    assert ids(q="montenegro") == [1]
+    assert ids(q="processos") == [1]
+    assert ids(q="usuario") == [1]
+    assert ids(q="youtube") == [2]
+    assert ids(q="instagram abc") == [1]
+    assert ids(q="relatorio") == [3]
+    assert ids(q="lui") == [1, 4]
+    assert ids(q="montenegro", tipo="link") == [1] and ids(q="montenegro", tipo="texto") == []
+    assert buscar_links(sessao, q="montenegro")[1] == 1
+    assert buscar_links(sessao, q="usuario")[1] == 1
+    assert buscar_links(sessao, q="youtube")[1] == 1
+
+
+def test_periodo(sessao):
+    for mid, quando in ((1, "2026-11-01T10:00:00+00:00"), (2, "2026-11-03T12:00:30+00:00"), (3, "2026-11-05T09:00:00+00:00")):
+        salvar_ao_vivo(sessao, dados(mid, enviada_em=quando))
+    ids = lambda **kw: sorted(n.message_id for n in buscar(sessao, **kw)[0])  # noqa: E731
+    assert ids(de="2026-11-02T00:00:00+00:00") == [2, 3]
+    assert ids(ate="2026-11-03T12:00:59+00:00") == [1, 2]
+    assert ids(de="2026-11-02T00:00:00+00:00", ate="2026-11-04T00:00:00+00:00") == [2]
+    assert ids(de="2026-11-05T00:00:00+00:00", ate="2026-11-01T00:00:00+00:00") == []
+    com_links(sessao, 10, ["a.com"], data="2026-10-01T00:00:00+00:00")  # data do item (linha do WhatsApp)
+    assert buscar_links(sessao, de="2026-10-15T00:00:00+00:00")[1] == 0
+    assert buscar_links(sessao, ate="2026-10-15T00:00:00+00:00")[1] == 1
+
+
+@pytest.mark.lento
+def test_busca_ampliada_com_10000_notas_em_menos_de_1s(sessao):
+    import time
+
+    from sqlalchemy import insert as insert_core
+    from sqlalchemy import text
+    sessao.execute(insert_core(Nota), [
+        dados(mid=i, texto=f"nota {i}", tipo="link" if i % 2 else "texto",
+              enviada_em=f"2026-{1 + i % 12:02d}-01T00:00:00+00:00") | {"origem": "ao_vivo", "criada_em": "x"}
+        for i in range(1, 10_001)])
+    ids = dict(sessao.execute(text("SELECT message_id, id FROM nota WHERE tipo = 'link'")).all())
+    sessao.execute(insert_core(Link), [
+        {"nota_id": nid, "posicao": 0, "url": f"https://s{mid % 50}.com/{mid}", "site": f"s{mid % 50}.com",
+         "data": "2026-01-01T00:00:00+00:00", "autor": "Usuario"} for mid, nid in ids.items()])
+    sessao.execute(insert_core(Previa), [
+        {"url": f"https://s{mid % 50}.com/{mid}", "situacao": "ok", "titulo": f"Título Montenegro {mid % 7}"}
+        for mid in ids])
+    sessao.commit()
+    for kw in ({"q": "montenegro"}, {"q": "s7"}, {"q": "nota", "de": "2026-06-01T00:00:00+00:00"},
+               {"q": "montenegro", "tipo": "link", "pagina": 3}):
+        inicio = time.perf_counter()
+        buscar(sessao, **kw)
+        assert time.perf_counter() - inicio < 1.0, kw
+    inicio = time.perf_counter()
+    buscar_links(sessao, q="montenegro", de="2025-01-01T00:00:00+00:00")
+    assert time.perf_counter() - inicio < 1.0
