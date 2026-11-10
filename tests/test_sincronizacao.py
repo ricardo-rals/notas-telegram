@@ -169,3 +169,15 @@ def test_caderno_vazio_pega_tudo_e_erro_no_meio_mantem_o_que_veio(sessao, engine
     cliente2 = ClienteFalso([msg(1, "um"), msg(2, "dois"), msg(3, "três")])
     imp2 = rodar(sessao, engine, config_teste, cliente2)
     assert cliente2.pedidos[0][1] == 2 and imp2.criadas == 1  # continua de onde parou
+
+
+def test_login_aguarda_get_me():
+    from types import SimpleNamespace
+
+    from notas.sincronizacao import _login
+
+    class Falso(ClienteFalso):
+        async def get_me(self):
+            return SimpleNamespace(first_name="Dono")
+
+    assert asyncio.run(_login(Falso([]))) == "Dono"

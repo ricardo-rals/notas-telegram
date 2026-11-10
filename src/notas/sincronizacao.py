@@ -169,6 +169,13 @@ def executar(imp_id: int, engine: Engine, cfg: Config) -> None:
     asyncio.run(sincronizar(imp_id, criar_cliente(cfg), engine, cfg))
 
 
+async def _login(cliente) -> str:
+    """Pede telefone, código e, se houver, a senha de duas etapas; devolve o nome da conta."""
+    async with cliente:
+        eu = await cliente.get_me()
+        return eu.first_name
+
+
 def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
     try:
@@ -180,9 +187,7 @@ def main() -> None:
             cliente = criar_cliente(cfg, exigir_login=False)
         except SemConfiguracao as e:
             raise SystemExit(str(e)) from None
-        with cliente:  # pede telefone, código e, se houver, a senha de duas etapas
-            eu = cliente.get_me()
-            print(f"Login feito como {eu.first_name}. Sessão em {cfg.telegram_sessao}.session")
+        print(f"Login feito como {asyncio.run(_login(cliente))}. Sessão em {cfg.telegram_sessao}.session")
         return
     engine = criar_engine(cfg.database_url)
     exigir_revisao_atual(engine)
