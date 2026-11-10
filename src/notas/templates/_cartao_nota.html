@@ -54,7 +54,7 @@
   <p class="etiquetas">{% for t in etiquetas %}<a class="etiqueta" href="{{ href(tag=t) }}">#{{ t }}</a>{% endfor %}</p>
   {%- endif %}
   <p class="meta">
-    <span class="tipo">{{ rotulos[n.tipo] }}</span> · {{ n.enviada_em | data_local }}
+    <span class="tipo">{{ rotulos[n.tipo] }}</span> · {{ n.enviada_em | data_local(so_hora) }}
     {%- if n.editada_em %} · editada {{ n.editada_em | data_local }}{% endif %}
     · <a href="{{ n.link }}" target="_blank" rel="noopener">abrir no Telegram</a>
   </p>

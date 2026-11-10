@@ -171,8 +171,8 @@ def test_contar_por_tipo(sessao):
         salvar_ao_vivo(sessao, dados(i, tipo="audio"))
     com_links(sessao, 10, ["a.com", "b.com", "a.com"], situacao="falha", erro="x")
     c = contar_por_tipo(sessao)
-    # a aba Link conta itens (3); as demais contam notas (FR-002)
-    assert c == {t: 0 for t in TIPOS} | {"foto": 7, "audio": 3, "link": 3, "falha": 1, "todas": 11}
+    # a aba Link conta itens (3); Todas conta itens da linha do tempo: 10 notas + 3 links (010)
+    assert c == {t: 0 for t in TIPOS} | {"foto": 7, "audio": 3, "link": 3, "falha": 1, "todas": 13}
 
 
 # --- 003 US1: itens de link -------------------------------------------------------------
@@ -517,3 +517,55 @@ def test_busca_ampliada_com_10000_notas_em_menos_de_1s(sessao):
     inicio = time.perf_counter()
     buscar_links(sessao, q="montenegro", de="2025-01-01T00:00:00+00:00")
     assert time.perf_counter() - inicio < 1.0
+
+
+# --- 010: linha do tempo ------------------------------------------------------------------
+def test_linha_do_tempo_plana(sessao):
+    from notas.repositorio import buscar_linha_do_tempo
+    salvar_ao_vivo(sessao, dados(1, texto="texto velho #x", enviada_em="2026-11-01T10:00:00+00:00"))
+    d = "2026-11-03T10:00:00+00:00"
+    salvar_ao_vivo(sessao, dados(2, tipo="link", texto="dois links #x", enviada_em=d),
+                   itens=[item(0, "https://a.com/2/0", "a.com", d), item(1, "https://b.com/2/1", "b.com", d)])
+    salvar_ao_vivo(sessao, dados(3, tipo="foto", texto="foto nova", enviada_em="2026-11-05T10:00:00+00:00"))
+    itens, total = buscar_linha_do_tempo(sessao)
+    assert total == 4
+    resumo = [(tipo, (lk.url if tipo == "link" else n.texto)) for tipo, n, lk, _ in itens]
+    assert resumo == [("nota", "foto nova"), ("link", "https://a.com/2/0"), ("link", "https://b.com/2/1"),
+                      ("nota", "texto velho #x")]
+    assert buscar_linha_do_tempo(sessao, q="foto")[1] == 1
+    assert buscar_linha_do_tempo(sessao, tag="x")[1] == 3
+    assert buscar_linha_do_tempo(sessao, de="2026-11-02T00:00:00+00:00", ate="2026-11-04T00:00:00+00:00")[1] == 2
+    assert buscar_linha_do_tempo(sessao, q="  ")[1] == 4
+    c = contar_por_tipo(sessao)
+    assert c["todas"] == 4 and c["link"] == 2 and c["texto"] == 1
+
+
+def test_linha_do_tempo_pagina_por_itens(sessao):
+    from notas.repositorio import POR_PAGINA, buscar_linha_do_tempo
+    com_links(sessao, 1, ["a.com"] * 52)
+    pag1, total = buscar_linha_do_tempo(sessao)
+    pag2, _ = buscar_linha_do_tempo(sessao, pagina=2)
+    assert total == 52 and len(pag1) == POR_PAGINA and len(pag2) == 2
+
+
+@pytest.mark.lento
+def test_linha_do_tempo_com_10000_notas_em_menos_de_1s(sessao):
+    import time
+
+    from sqlalchemy import insert as insert_core
+    from sqlalchemy import text
+
+    from notas.repositorio import buscar_linha_do_tempo
+    sessao.execute(insert_core(Nota), [
+        dados(mid=i, texto=f"nota {i}", tipo="link" if i % 2 else "texto",
+              enviada_em=f"2026-{1 + i % 12:02d}-01T00:00:00+00:00") | {"origem": "ao_vivo", "criada_em": "x"}
+        for i in range(1, 10_001)])
+    ids = dict(sessao.execute(text("SELECT message_id, id FROM nota WHERE tipo = 'link'")).all())
+    sessao.execute(insert_core(Link), [
+        {"nota_id": nid, "posicao": 0, "url": f"https://s{mid % 50}.com/{mid}", "site": f"s{mid % 50}.com",
+         "data": f"2026-{1 + mid % 12:02d}-02T00:00:00+00:00", "autor": None} for mid, nid in ids.items()])
+    sessao.commit()
+    for kw in ({}, {"pagina": 40}, {"q": "nota"}, {"de": "2026-06-01T00:00:00+00:00"}):
+        inicio = time.perf_counter()
+        buscar_linha_do_tempo(sessao, **kw)
+        assert time.perf_counter() - inicio < 1.0, kw

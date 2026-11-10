@@ -59,6 +59,9 @@ Depois de atualizar o código, rode `uv run --env-file .env alembic upgrade head
 
 ## Painel
 
+A aba **Todas** é uma linha do tempo: cada coisa que você mandou é um cartão (cada link da
+mensagem vira o seu), agrupados por dia — Hoje, Ontem, 5 de novembro.
+
 Escuro por padrão (segue o tema claro do Windows). À esquerda, as categorias que você usa, com
 as contagens; à direita, os cartões, cada tipo no seu formato. Atalhos: `/` ou `Ctrl+K` busca,
 `Esc` limpa a busca e fecha a foto ampliada. Com o painel aberto, notas novas aparecem como um

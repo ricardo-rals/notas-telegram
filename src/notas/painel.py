@@ -25,6 +25,7 @@ from notas.repositorio import (
     POR_PAGINA,
     ImportacaoEmAndamento,
     buscar,
+    buscar_linha_do_tempo,
     buscar_links,
     contar_grupos_documento,
     contar_novas,
@@ -110,9 +111,40 @@ def atalhos_periodo(q, tipo, site, tag, grupo) -> list[tuple[str, str]]:
     ]
 
 
-def data_local(iso: str) -> str:
+MESES = ("janeiro", "fevereiro", "março", "abril", "maio", "junho", "julho", "agosto", "setembro",
+         "outubro", "novembro", "dezembro")
+
+
+def dia_rotulo(dia: date, hoje: date | None = None) -> str:
+    hoje = hoje or date.today()
+    if dia == hoje:
+        return "Hoje"
+    if dia == hoje - timedelta(days=1):
+        return "Ontem"
+    rotulo = f"{dia.day} de {MESES[dia.month - 1]}"
+    return rotulo if dia.year == hoje.year else f"{rotulo} de {dia.year}"
+
+
+def agrupar_por_dia(itens) -> list[tuple[str, list]]:
+    """Itens da linha do tempo sob títulos de dia local, na ordem em que vieram (010)."""
+    grupos: list[tuple[str, list]] = []
+    for item in itens:
+        tipo, nota, link, _ = item
+        try:
+            dia = datetime.fromisoformat(link.data if tipo == "link" else nota.enviada_em).astimezone().date()
+            rotulo = dia_rotulo(dia)
+        except ValueError:
+            rotulo = "Sem data"
+        if not grupos or grupos[-1][0] != rotulo:
+            grupos.append((rotulo, []))
+        grupos[-1][1].append(item)
+    return grupos
+
+
+def data_local(iso: str, so_hora: bool = False) -> str:
+    """Data e hora local; na linha do tempo (010), só a hora, porque o dia já está no título."""
     try:
-        return datetime.fromisoformat(iso).astimezone().strftime("%d/%m/%Y %H:%M")
+        return datetime.fromisoformat(iso).astimezone().strftime("%H:%M" if so_hora else "%d/%m/%Y %H:%M")
     except ValueError:
         return iso
 
@@ -155,8 +187,13 @@ def criar_app(cfg: Config, engine: Engine, iniciar_previas=iniciar_thread, pasta
         with Session(engine) as sessao:
             # site na URL: "-" = sem site identificado (''), vazio = todos; outro valor vai como veio (FR-015 da 002)
             filtro_site = {"": None, "-": ""}.get(site, site)
-            notas, links, links_por_nota, sites = [], [], {}, []
-            if tipo == "link":  # aba Link: um item por link (FR-002 da 003)
+            notas, links, links_por_nota, sites, linha = [], [], {}, [], []
+            if not tipo:  # Todas: linha do tempo plana, um item por link (010)
+                itens, total = buscar_linha_do_tempo(sessao, q=q, pagina=pagina, tag=tag, de=de_utc, ate=ate_utc)
+                notas = [n for k, n, _, _ in itens if k == "nota"]
+                links = [(lk, n, pv) for k, n, lk, pv in itens if k == "link"]
+                linha = agrupar_por_dia(itens)
+            elif tipo == "link":  # aba Link: um item por link (FR-002 da 003)
                 links, total = buscar_links(sessao, site=filtro_site, q=q, pagina=pagina, tag=tag, de=de_utc, ate=ate_utc)
                 sites = contar_sites(sessao)
             else:
@@ -174,9 +211,9 @@ def criar_app(cfg: Config, engine: Engine, iniciar_previas=iniciar_thread, pasta
             # aviso de notas novas só na 1ª página sem filtro (FR-008 da 004)
             novas = None
             if pagina == 1 and not (q or tipo or site or tag or de or ate):
-                novas = notas[0].enviada_em if notas else ""
+                novas = max((n.enviada_em for n in notas + [nota for _, nota, _ in links]), default="")
             contexto = {
-                "notas": notas, "links": links, "links_por_nota": links_por_nota,
+                "notas": notas, "links": links, "links_por_nota": links_por_nota, "linha": linha,
                 "total": total, "q": q, "tipo": tipo, "pagina": pagina,
                 "por_pagina": POR_PAGINA, "paginas": max(1, math.ceil(total / POR_PAGINA)),
                 "rotulos": ROTULOS, "plurais": ROTULOS_PLURAIS, "categorias": categorias,

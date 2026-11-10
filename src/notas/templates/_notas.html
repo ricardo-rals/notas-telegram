@@ -19,8 +19,22 @@
 {%- endfor %}
 </nav>
 {%- endif %}
-{%- set itens_lista = links if tipo == 'link' else notas %}
-{%- if itens_lista %}
+{%- set itens_lista = linha if not tipo else (links if tipo == 'link' else notas) %}
+{%- set so_hora = false %}
+{%- if linha %}
+{#- Todas: linha do tempo plana, agrupada por dia (010); o dia está no título, o cartão mostra só a hora -#}
+{%- set so_hora = true %}
+{%- for rotulo, itens in linha %}
+<section class="dia-grupo" aria-label="{{ rotulo }}">
+  <h2 class="dia">{{ rotulo }}</h2>
+  <div class="grade">
+  {%- for kind, n, lk, previa in itens %}
+    {%- if kind == 'link' %}{% set nota = n %}{% include "_cartao_link.html" %}{% else %}{% include "_cartao_nota.html" %}{% endif %}
+  {%- endfor %}
+  </div>
+</section>
+{%- endfor %}
+{%- elif itens_lista %}
 <div class="grade">
 {%- if tipo == 'link' %}
 {%- for lk, nota, previa in links %}

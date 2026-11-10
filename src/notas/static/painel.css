@@ -159,6 +159,14 @@ nav.abas a {
 nav.abas a:hover { color: var(--texto); border-color: var(--borda-forte); }
 nav.abas a[aria-current] { color: var(--fundo); background: var(--texto); border-color: var(--texto); }
 
+/* Linha do tempo (010) */
+.dia-grupo + .dia-grupo { margin-top: 2rem; }
+h2.dia {
+  position: sticky; top: 60px; z-index: 4; margin: 0 0 .75rem; padding: .5rem 0;
+  font-size: .8rem; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--fraco);
+  background: linear-gradient(var(--fundo) 70%, transparent);
+}
+
 /* Grade e cartões */
 .grade { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 1rem; align-items: start; }
 .grade.interna { grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: .5rem; margin-top: .75rem; }

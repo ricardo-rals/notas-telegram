@@ -175,8 +175,8 @@ def contar_por_tipo(sessao: Session) -> dict[str, int]:
     """Contagens do caderno inteiro (FR-002 da 002): uma por tipo, mais `falha` e `todas`.
     A aba link conta itens de link; as demais (e `todas`) contam notas (FR-002 da 003)."""
     c = {t: 0 for t in TIPOS} | dict(sessao.execute(select(Nota.tipo, func.count()).group_by(Nota.tipo)).all())
-    c["todas"] = sum(c[t] for t in TIPOS)
     c["link"] = sessao.scalar(select(func.count()).select_from(Link).join(Nota).where(Nota.tipo == "link"))
+    c["todas"] = sum(c[t] for t in TIPOS)  # com "link" já em itens: conta a linha do tempo (010)
     c["falha"] = sessao.scalar(select(func.count()).where(Nota.situacao == "falha"))
     return c
 
@@ -243,6 +243,45 @@ def buscar_links(
         .limit(POR_PAGINA).offset((pagina - 1) * POR_PAGINA)
     ).all()
     return [tuple(r) for r in linhas], total
+
+
+def buscar_linha_do_tempo(
+    sessao: Session, q: str = "", pagina: int = 1, tag: str = "", de: str | None = None, ate: str | None = None,
+) -> tuple[list[tuple[str, Nota, Link | None, Previa | None]], int]:
+    """Aba Todas (010): notas que não são de link e um item por link, numa lista só, do mais
+    recente ao mais antigo (links pela data do item, como na aba Link). Devolve
+    `[("nota", nota, None, None) | ("link", nota, link, previa)]` e o total de itens."""
+    notas = select(Nota.id.label("nota_id"), literal_column("NULL::bigint").label("link_id"),
+                   Nota.enviada_em.label("data")).where(Nota.tipo != "link")
+    links = (select(Link.nota_id, Link.id, Link.data).join(Nota, Nota.id == Link.nota_id)
+             .outerjoin(Previa, Previa.url == Link.url).where(Nota.tipo == "link"))
+    if tag:
+        notas, links = notas.where(_com_tag(tag)), links.where(_com_tag(tag))
+    if de:
+        notas, links = notas.where(Nota.enviada_em >= de), links.where(Link.data >= de)
+    if ate:
+        notas, links = notas.where(Nota.enviada_em <= ate), links.where(Link.data <= ate)
+    if q.strip():
+        fts = consulta_fts(q)
+        if fts is None:
+            return [], 0
+        notas = notas.where(_casa(literal_column("nota.busca"), fts))
+        links = links.where(_casa(literal_column("nota.busca"), fts) | _casa(literal_column("previa.busca"), fts)
+                            | _casa(literal_column("link.busca"), fts))
+    uniao = notas.union_all(links).subquery()
+    total = sessao.scalar(select(func.count()).select_from(uniao))
+    pagina_ids = sessao.execute(
+        select(uniao.c.nota_id, uniao.c.link_id)
+        .order_by(uniao.c.data.desc(), uniao.c.nota_id.desc(), uniao.c.link_id)
+        .limit(POR_PAGINA).offset((pagina - 1) * POR_PAGINA)
+    ).all()
+    por_nota = {n.id: n for n in sessao.scalars(select(Nota).where(Nota.id.in_({i for i, _ in pagina_ids})))}
+    por_link = {lk.id: (lk, pv) for lk, pv in sessao.execute(
+        select(Link, Previa).outerjoin(Previa, Previa.url == Link.url)
+        .where(Link.id.in_({lid for _, lid in pagina_ids if lid is not None})))}
+    itens = [("link", por_nota[nid], *por_link[lid]) if lid is not None else ("nota", por_nota[nid], None, None)
+             for nid, lid in pagina_ids]
+    return itens, total
 
 
 def links_das_notas(sessao: Session, ids: list[int]) -> dict[int, list[tuple[Link, Previa | None]]]:

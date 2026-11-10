@@ -243,11 +243,11 @@ def test_mensagem_de_exemplo_aba_link_e_todas(cliente, sessao):
     html = cliente.get("/?tipo=link").text
     assert len(cartoes_link(html)) == 9
     assert "instagram.com (8)" in html and ("Link", 9) in [(r, n) for _, _, r, n in categorias(html)]
-    assert "05/11/2026 12:40 · Usuario" in html and "05/11/2026 20:41 · Usuario" in html
+    assert "05/11/2026 12:40 · Usuario" in html and "05/11/2026 20:41 · Usuario" in html  # aba Link: data completa
     assert len(cartoes_link(cliente.get("/?tipo=link&site=instagram.com").text)) == 8
-    todas = cliente.get("/").text
-    assert todas.count('<article class="cartao nota') == 1 and len(cartoes_link(todas)) == 9
-    assert ("Todas", 1) in [(r, n) for _, _, r, n in categorias(todas)]
+    todas = cliente.get("/").text  # linha do tempo (010): um cartão por link, nenhum aninhado
+    assert todas.count('<article class="cartao nota') == 0 and len(cartoes_link(todas)) == 9
+    assert ("Todas", 9) in [(r, n) for _, _, r, n in categorias(todas)]
 
 
 # --- 003 US2: prévia no cartão e CSP ---------------------------------------------------
@@ -652,3 +652,29 @@ def test_sincronizar_pelo_painel(engine, config_teste, sessao, tmp_path):
     sessao.add(Importacao(pasta="x", via="terminal", status="rodando"))
     sessao.commit()
     assert cli.post("/sincronizar").status_code == 409
+
+
+# --- 010: linha do tempo ------------------------------------------------------------------
+def test_linha_do_tempo_no_painel(cliente, sessao):
+    from datetime import datetime, timedelta, timezone
+    agora = datetime.now(timezone.utc)
+    iso = lambda d: d.isoformat(timespec="seconds")  # noqa: E731
+    salvar_ao_vivo(sessao, nota(1, texto="de hoje", enviada_em=iso(agora)))
+    salvar_ao_vivo(sessao, nota(2, texto="de ontem", enviada_em=iso(agora - timedelta(days=1))))
+    link_com_sites(sessao, 3, ["a.com", "b.com"], texto="dois links")  # DATA = 05/11/2026
+    html = cliente.get("/").text
+    principal = html.split('<section class="principal"')[1]
+    assert re.findall(r'<h2 class="dia">([^<]+)</h2>', principal) == ["Hoje", "Ontem", "5 de novembro"]
+    assert principal.count('<article class="cartao nota') == 2 and len(cartoes_link(principal)) == 2
+    assert 'class="grade interna"' not in principal  # nada aninhado
+    hoje = principal.index(">Hoje<")
+    assert hoje < principal.index("de hoje") < principal.index(">Ontem<") < principal.index("de ontem")
+    assert '<h2 class="dia">' not in cliente.get("/?tipo=texto").text  # títulos de dia só na Todas
+
+
+def test_linha_do_tempo_mostra_so_a_hora(cliente, sessao):
+    salvar_ao_vivo(sessao, nota(1, texto="x", enviada_em="2026-11-05T10:00:00+00:00"))
+    todas = cliente.get("/").text.split('<section class="principal"')[1]
+    texto = cliente.get("/?tipo=texto").text.split('<section class="principal"')[1]
+    assert re.search(r'<span class="tipo">Texto</span> · \d\d:\d\d\s', todas)
+    assert re.search(r'<span class="tipo">Texto</span> · \d\d/\d\d/2026 \d\d:\d\d', texto)

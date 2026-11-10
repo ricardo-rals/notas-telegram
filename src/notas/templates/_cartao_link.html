@@ -15,6 +15,6 @@
   {%- else %}
   <p class="texto">{{ nota.texto }}</p>
   {%- endif %}
-  <p class="meta">{{ lk.site or 'Sem site identificado' }} · {{ lk.data | data_local }}{% if lk.autor %} · {{ lk.autor }}{% endif %}
+  <p class="meta">{{ lk.site or 'Sem site identificado' }} · {{ lk.data | data_local(so_hora) }}{% if lk.autor %} · {{ lk.autor }}{% endif %}
     · <a href="{{ nota.link }}" target="_blank" rel="noopener">abrir no Telegram</a></p>
 </article>
