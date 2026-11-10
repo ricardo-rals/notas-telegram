@@ -386,10 +386,13 @@ FUSO_LOCAL = None  # None = fuso do computador; os testes trocam por um fixo
 
 
 def periodo_utc(valor: str | None, fim: bool) -> str | None:
-    """`AAAA-MM-DDTHH:MM` no fuso local (input datetime-local) → ISO UTC, como as datas gravadas.
-    O fim do período inclui o minuto inteiro (":59"). Formato inválido levanta ValueError."""
+    """`AAAA-MM-DD` (input date) no fuso local → ISO UTC, como as datas gravadas. O início é 00:00 e
+    o fim é 23:59:59 do dia, para o período incluir os dois dias inteiros. Formato inválido levanta
+    ValueError."""
     if not valor:
         return None
-    dt = datetime.strptime(valor, "%Y-%m-%dT%H:%M").replace(second=59 if fim else 0)
+    dt = datetime.strptime(valor, "%Y-%m-%d")
+    if fim:
+        dt = dt.replace(hour=23, minute=59, second=59)
     dt = dt.replace(tzinfo=FUSO_LOCAL) if FUSO_LOCAL else dt.astimezone()
     return dt.astimezone(UTC).isoformat(timespec="seconds")

@@ -84,7 +84,7 @@ Também dá para sincronizar pelo terminal: `uv run --env-file .env python -m no
 A busca procura no texto, no nome dos arquivos, no título e na descrição das prévias, no autor
 das linhas do WhatsApp e no endereço dos links, sem diferença de maiúsculas e acentos e pelo
 começo das palavras ("lui" acha "Luis" e "Luiz"). Os campos **de** e **até** no topo filtram por
-data e hora; os atalhos Hoje, 7 dias e 30 dias ficam acima da lista.
+dia (sem "até", vale até hoje); os atalhos Hoje, 7 dias e 30 dias ficam acima da lista.
 
 ## Tags e tipos de arquivo
 

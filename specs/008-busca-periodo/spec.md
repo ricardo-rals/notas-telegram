@@ -17,6 +17,7 @@
   todas as abas, não só na aba Link.
 - Q: "Luiz" deve achar "Luis"? → A: não por grafia parecida; a busca acha palavras que começam
   com o que foi digitado ("Lui" acha "Luis" e "Luiz"). Grafias diferentes ficam fora desta fatia.
+- Q: O filtro usa data e hora? → A: só data (revisão do dono após o uso); "até" vazio = hoje.
 - Q: O período usa qual data? → A: a data de envio da nota; na aba Link, a data do item (a da
   linha do WhatsApp, quando houver), a mesma usada para ordenar.
 
@@ -59,8 +60,9 @@ período, combinando com busca, categoria, site e tag.
   (sem maiúsculas/acentos, todas as palavras, prefixo).
 - **FR-002**: Na aba Link, cada item MUST casar pelo texto da nota, pela sua prévia ou pelo seu
   autor, site e endereço.
-- **FR-003**: O painel MUST aceitar `de` e `ate` (data e hora local `AAAA-MM-DDTHH:MM`), filtrar
-  pela data de envio (aba Link: data do item) e manter o período em todos os links do painel.
+- **FR-003**: O painel MUST aceitar `de` e `ate` (só a data, `AAAA-MM-DD`, dias inteiros no fuso
+  local), filtrar pela data de envio (aba Link: data do item) e manter o período em todos os links
+  do painel. Sem `ate`, vale o dia de hoje, e o campo mostra a data de hoje.
 - **FR-004**: O painel MUST oferecer atalhos Hoje, 7 dias e 30 dias e um "limpar período".
 - **FR-005**: Com 10.000 notas, busca e período MUST responder em até 1 segundo.
 
@@ -71,5 +73,6 @@ período, combinando com busca, categoria, site e tag.
 
 ## Assumptions
 
-- O período é inclusivo nos dois lados, com precisão de minuto; "até 12:00" inclui 12:00:59.
+- O período é inclusivo nos dois lados, por dia inteiro: "de" começa às 00:00 e "até" vai até
+  23:59:59. (Revisão de 2026-11-10, a pedido do dono: a hora saiu do filtro.)
 - O fuso é o do computador, o mesmo das datas mostradas.

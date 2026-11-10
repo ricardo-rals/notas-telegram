@@ -4,7 +4,7 @@ import logging
 import math
 import re
 import threading
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from urllib.parse import urlencode
 
@@ -99,15 +99,13 @@ def contato(texto: str | None) -> tuple[str, str, str | None]:
 
 
 def atalhos_periodo(q, tipo, site, tag, grupo) -> list[tuple[str, str]]:
-    """Hoje, 7 dias, 30 dias e limpar (FR-004 da 008), no formato do input datetime-local."""
-    agora = datetime.now()
-    hoje = agora.replace(hour=0, minute=0, second=0, microsecond=0)
-    fmt = "%Y-%m-%dT%H:%M"
+    """Hoje, 7 dias, 30 dias e limpar (FR-004 da 008), no formato do input date."""
+    hoje = date.today()
     base = dict(q=q, tipo=tipo, site=site, tag=tag, grupo=grupo)
     return [
-        ("Hoje", href(**base, de=hoje.strftime(fmt))),
-        ("7 dias", href(**base, de=(agora - timedelta(days=7)).strftime(fmt))),
-        ("30 dias", href(**base, de=(agora - timedelta(days=30)).strftime(fmt))),
+        ("Hoje", href(**base, de=hoje.isoformat())),
+        ("7 dias", href(**base, de=(hoje - timedelta(days=7)).isoformat())),
+        ("30 dias", href(**base, de=(hoje - timedelta(days=30)).isoformat())),
         ("Limpar período", href(**base)),
     ]
 
@@ -150,9 +148,10 @@ def criar_app(cfg: Config, engine: Engine, iniciar_previas=iniciar_thread, pasta
         if tipo and tipo not in TIPOS and tipo != "falha":
             raise HTTPException(422, "tipo inválido")
         try:
-            de_utc, ate_utc = periodo_utc(de, fim=False), periodo_utc(ate, fim=True)
+            # sem "até", vale o dia de hoje (pedido do dono, 008)
+            de_utc, ate_utc = periodo_utc(de, fim=False), periodo_utc(ate or date.today().isoformat(), fim=True)
         except ValueError:
-            raise HTTPException(422, "data inválida (use AAAA-MM-DDTHH:MM)") from None
+            raise HTTPException(422, "data inválida (use AAAA-MM-DD)") from None
         with Session(engine) as sessao:
             # site na URL: "-" = sem site identificado (''), vazio = todos; outro valor vai como veio (FR-015 da 002)
             filtro_site = {"": None, "-": ""}.get(site, site)
@@ -184,7 +183,7 @@ def criar_app(cfg: Config, engine: Engine, iniciar_previas=iniciar_thread, pasta
                 "contagens": contagens, "falhas": contagens["falha"],
                 # todo link do painel leva o período junto (FR-003 da 008)
                 "href": lambda *a, **k: href(*a, **({"de": de, "ate": ate} | k)),
-                "de": de, "ate": ate, "atalhos": atalhos_periodo(q, tipo, site, tag, grupo),
+                "de": de, "ate": ate, "ate_mostrado": ate or date.today().isoformat(), "atalhos": atalhos_periodo(q, tipo, site, tag, grupo),
                 "sites": sites, "site": site, "fotos": fotos, "novas_desde": novas,
                 "tag": tag, "tags": contar_tags(sessao), "tags_por_nota": tags_das_notas(sessao, ids),
                 "grupo": grupo, "grupos": [(g, GRUPOS_DOCUMENTO[g][0], n) for g, n in grupos],

@@ -583,26 +583,36 @@ def test_importar_mostra_estado_do_backup(cliente, config_teste):
 
 # --- 008: período e busca ampliada no painel --------------------------------------------
 def test_periodo_no_painel(cliente, sessao, monkeypatch):
-    from datetime import timedelta, timezone
+    from datetime import date, timedelta, timezone
 
     from notas import regras
     monkeypatch.setattr(regras, "FUSO_LOCAL", timezone(timedelta(hours=-3)))
     salvar_ao_vivo(sessao, nota(1, texto="antiga #x", enviada_em="2026-11-01T10:00:00+00:00"))
     salvar_ao_vivo(sessao, nota(2, texto="nova #x", enviada_em="2026-11-05T10:00:00+00:00"))
-    html = cliente.get("/", params={"de": "2026-11-03T00:00"}).text
+    hoje = date.today().isoformat()
+    html = cliente.get("/", params={"de": "2026-11-03"}).text
     assert "nova" in html and "antiga" not in html
     form = html.split('<div id="painel"')[0]
-    assert re.search(r'<input type="datetime-local" id="de" name="de" value="2026-11-03T00:00"', form)
-    assert re.search(r'<input type="datetime-local" id="ate" name="ate" value=""', form)
-    # o período segue em categorias, tags e etiquetas
-    assert all("de=2026-11-03T00%3A00" in href for href, _, _, _ in categorias(html))
-    assert all("de=2026-11-03T00%3A00" in href for href, _, _, _ in secao_tags(html))
-    assert "antiga" in cliente.get("/", params={"ate": "2026-11-02T00:00"}).text
-    assert "Nada encontrado" in cliente.get("/", params={"de": "2026-11-06T00:00", "ate": "2026-11-01T00:00"}).text \
-        or "Nenhuma nota" in cliente.get("/", params={"de": "2026-11-06T00:00", "ate": "2026-11-01T00:00"}).text
+    assert re.search(r'<input type="date" id="de" name="de" value="2026-11-03"', form)
+    # sem "até", vale o dia de hoje (e o campo mostra a data de hoje)
+    assert re.search(rf'<input type="date" id="ate" name="ate" value="{hoje}"', form)
+    assert re.search(rf'<input type="date" id="ate" name="ate" value="{hoje}"', cliente.get("/").text)
+    assert "datetime-local" not in html
+    # o período segue em categorias, tags e etiquetas (só o que foi digitado vai no endereço)
+    assert all("de=2026-11-03" in href and "ate=" not in href for href, _, _, _ in categorias(html))
+    assert all("de=2026-11-03" in href for href, _, _, _ in secao_tags(html))
+    # dia inteiro: "até 05/11" inclui a nota das 07:00 locais de 05/11
+    html = cliente.get("/", params={"de": "2026-11-05", "ate": "2026-11-05"}).text
+    assert "nova" in html and "antiga" not in html
+    assert "antiga" in cliente.get("/", params={"ate": "2026-11-02"}).text
+    assert "nova" not in cliente.get("/", params={"ate": "2026-11-02"}).text
+    vazio = cliente.get("/", params={"de": "2026-11-06", "ate": "2026-11-01"}).text
+    assert "Nenhuma nota" in vazio or "Nada encontrado" in vazio
     assert cliente.get("/", params={"de": "03/11/2026"}).status_code == 422
+    assert cliente.get("/", params={"de": "2026-11-03T00:00"}).status_code == 422
     atalhos = re.search(r'<nav aria-label="Período"[^>]*>(.*?)</nav>', html, re.S).group(1)
     assert re.findall(r">([^<]+)</a>", atalhos) == ["Hoje", "7 dias", "30 dias", "Limpar período"]
+    assert re.search(rf'href="[^"]*de={hoje}"[^>]*>Hoje<', atalhos)
     assert 'id="novas"' not in html  # com período não há aviso de notas novas
 
 
