@@ -18,7 +18,7 @@ from sqlalchemy.orm import Session
 from notas.config import Config, ErroConfig, carregar
 from notas.db import TIPOS, Nota, criar_engine, exigir_revisao_atual
 from notas.importacao import encontrar_exportacoes, executar
-from notas import backup
+from notas import backup, sincronizacao
 from notas.previas import iniciar_thread
 from notas.regras import GRUPOS_DOCUMENTO, periodo_utc
 from notas.repositorio import (
@@ -120,7 +120,7 @@ def data_local(iso: str) -> str:
 
 
 def criar_app(cfg: Config, engine: Engine, iniciar_previas=iniciar_thread, pastas_exportacao=None,
-              iniciar_backup=backup.iniciar_thread) -> FastAPI:
+              iniciar_backup=backup.iniciar_thread, sincronizar=None) -> FastAPI:
     app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
     hosts = {f"127.0.0.1:{cfg.painel_port}", f"localhost:{cfg.painel_port}"}
     origens = {f"http://{h}" for h in hosts}
@@ -129,6 +129,7 @@ def criar_app(cfg: Config, engine: Engine, iniciar_previas=iniciar_thread, pasta
     for f in (extensao, tamanho, mapa, contato):
         templates.env.filters[f.__name__] = f
     pastas_exportacao = PASTAS_EXPORTACAO if pastas_exportacao is None else pastas_exportacao
+    sincronizar = sincronizar or sincronizacao.executar
 
     @app.middleware("http")
     async def so_local(request: Request, call_next):
@@ -260,6 +261,26 @@ def criar_app(cfg: Config, engine: Engine, iniciar_previas=iniciar_thread, pasta
         iniciar_previas(engine, cfg.media_dir)
     if cfg.backup_dir:
         iniciar_backup(cfg.database_url, cfg.backup_dir, cfg.backup_manter, cfg.pg_bin)
+
+    @app.post("/sincronizar")
+    def iniciar_sincronizacao(request: Request):
+        """Um clique: tudo do grupo depois da última nota salva (009). Usa a trava de importação."""
+        if falta := sincronizacao.o_que_falta(cfg):
+            return status(request, 422, falta)
+        with Session(engine) as sessao:
+            try:
+                imp_id = iniciar_importacao(sessao, "Telegram", "sincronizacao")
+            except ImportacaoEmAndamento:
+                return status(request, 409, "Já existe uma importação ou sincronização em andamento.")
+
+        def rodar():
+            try:
+                sincronizar(imp_id, engine, cfg)
+            except Exception as e:  # o erro já ficou gravado na importação
+                log.warning("sincronização %s terminou com erro: %s", imp_id, type(e).__name__)
+
+        threading.Thread(target=rodar, name="sincronizacao", daemon=True).start()
+        return status(request, 202)
 
     app.mount("/static", StaticFiles(directory=AQUI / "static"), name="static")
     app.mount("/media", StaticFiles(directory=cfg.media_dir, check_dir=False), name="media")

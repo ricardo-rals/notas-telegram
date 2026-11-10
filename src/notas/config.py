@@ -29,6 +29,9 @@ class Config:
     backup_manter: int = 7
     pg_bin: Path | None = None  # pasta com pg_dump/pg_restore (backup)
     sqlite_antigo: Path | None = None  # SQLite das fatias 001–006, só para migrar_sqlite
+    api_id: int | None = None  # MTProto oficial, só leitura (009); my.telegram.org
+    api_hash: str | None = None
+    telegram_sessao: Path | None = None  # sem ".session"; fora do repositório
 
 
 HOSTS_LOCAIS = {"127.0.0.1", "localhost", "::1"}
@@ -107,6 +110,12 @@ def carregar(exigir_token: bool = False, env: Mapping[str, str] = os.environ) ->
     if backup_manter < 1:
         raise ErroConfig("BACKUP_MANTER precisa ser pelo menos 1")
 
+    api_id = inteiro("TELEGRAM_API_ID", 0) or None
+    api_hash = valor("TELEGRAM_API_HASH")
+    telegram_sessao = Path(valor("TELEGRAM_SESSAO") or dados / "telegram")
+    if _dentro(telegram_sessao, RAIZ_REPO):
+        raise ErroConfig("TELEGRAM_SESSAO precisa ficar fora do repositório (Princípio IV)")
+
     return Config(
         chat_id=inteiro("ALLOWED_CHAT_ID"),
         user_id=inteiro("ALLOWED_USER_ID"),
@@ -119,4 +128,7 @@ def carregar(exigir_token: bool = False, env: Mapping[str, str] = os.environ) ->
         backup_manter=backup_manter,
         pg_bin=achar_pg_bin(env),
         sqlite_antigo=sqlite_antigo,
+        api_id=api_id,
+        api_hash=api_hash,
+        telegram_sessao=telegram_sessao,
     )

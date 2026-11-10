@@ -71,3 +71,16 @@ def test_previas_links(tmp_path, valor, esperado):
 def test_previas_links_invalido(tmp_path):
     with pytest.raises(ErroConfig, match="PREVIAS_LINKS"):
         carregar(env={**BASE, "PREVIAS_LINKS": "sim"})
+
+
+# --- 009: sincronização -------------------------------------------------------------------
+def test_config_da_sincronizacao(tmp_path):
+    cfg = carregar(env={**BASE, "LOCALAPPDATA": str(tmp_path)})
+    assert cfg.api_id is None and cfg.api_hash is None
+    assert cfg.telegram_sessao == tmp_path / "notas-telegram" / "telegram"
+    cfg = carregar(env={**BASE, "TELEGRAM_API_ID": "123", "TELEGRAM_API_HASH": "abc"})
+    assert (cfg.api_id, cfg.api_hash) == (123, "abc")
+    with pytest.raises(ErroConfig, match="TELEGRAM_API_ID"):
+        carregar(env={**BASE, "TELEGRAM_API_ID": "abc"})
+    with pytest.raises(ErroConfig, match="TELEGRAM_SESSAO"):
+        carregar(env={**BASE, "TELEGRAM_SESSAO": str(RAIZ_REPO / "data" / "telegram")})

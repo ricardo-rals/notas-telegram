@@ -20,7 +20,7 @@ def _erro(e: BaseException) -> str:
     return f"{type(e).__name__}: {e}"
 
 
-async def processar_mensagem(msg: dict, sessao: Session, cfg: Config, baixar: Baixar) -> None:
+async def processar_mensagem(msg: dict, sessao: Session, cfg: Config, baixar: Baixar, origem: str = "ao_vivo") -> None:
     """Uma mensagem → uma nota. Qualquer falha vira nota `falha` com o original (Princípio VIII)."""
     # Dono checado no dicionário cru, antes de qualquer parsing: mensagem de terceiro nunca vira
     # nota, nem nota de falha (FR-001, SC-003).
@@ -47,7 +47,7 @@ async def processar_mensagem(msg: dict, sessao: Session, cfg: Config, baixar: Ba
                 dados["arquivo_caminho"] = nome
             except Exception as e:
                 dados.update(situacao="falha", erro=f"download: {_erro(e)}")
-        salvar_ao_vivo(sessao, dados, itens_de_link(m) if c.tipo == "link" else [])
+        salvar_ao_vivo(sessao, dados, itens_de_link(m) if c.tipo == "link" else [], origem=origem)
     except Exception as e:
         sessao.rollback()
         registrar_falha(
@@ -59,6 +59,7 @@ async def processar_mensagem(msg: dict, sessao: Session, cfg: Config, baixar: Ba
             enviada_em=_tentar(lambda: iso_utc(msg["date"]), agora()),
             editada_em=_tentar(lambda: iso_utc(msg["edit_date"]), None),
             link=_tentar(lambda: link_mensagem(msg["chat"]["id"], msg["message_id"]), ""),
+            origem=origem,
         )
 
 

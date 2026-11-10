@@ -65,6 +65,20 @@ as contagens; à direita, os cartões, cada tipo no seu formato. Atalhos: `/` ou
 aviso "N notas novas · mostrar", sem recarregar o que você está vendo. Em **Importar**, as
 exportações do Telegram Desktop que estão em `Downloads` aparecem prontas para importar.
 
+## Sincronizar com um clique
+
+O botão **Sincronizar** no topo do painel traz tudo o que você mandou no grupo depois da última
+nota salva, sem exportar nada. Ele usa a API oficial do Telegram logada na **sua** conta, só para
+ler o grupo configurado (nunca envia, edita ou apaga). Para ativar, uma vez:
+
+1. Em https://my.telegram.org → *API development tools*, crie um app e copie `api_id` e `api_hash`.
+2. Preencha `TELEGRAM_API_ID` e `TELEGRAM_API_HASH` no `.env`.
+3. Rode `uv run --env-file .env python -m notas.sincronizacao login` e digite o telefone e o código
+   que o Telegram mandar. A sessão fica em `%LOCALAPPDATA%
+otas-telegram	elegram.session`.
+
+Também dá para sincronizar pelo terminal: `uv run --env-file .env python -m notas.sincronizacao`.
+
 ## Busca e período
 
 A busca procura no texto, no nome dos arquivos, no título e na descrição das prévias, no autor

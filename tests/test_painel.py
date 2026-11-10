@@ -611,3 +611,34 @@ def test_busca_ampliada_no_painel(cliente, sessao):
     previa(sessao, "https://instagram.com/1/0", titulo="Luis Eduardo Montenegro on Instagram")
     assert "Luis Eduardo Montenegro" in cliente.get("/", params={"q": "montenegro"}).text
     assert len(cartoes_link(cliente.get("/", params={"q": "montenegro", "tipo": "link"}).text)) == 1
+
+
+# --- 009: botão Sincronizar ---------------------------------------------------------------
+def test_sincronizar_pelo_painel(engine, config_teste, sessao, tmp_path):
+    from dataclasses import replace
+    chamadas = []
+
+    def falso(imp_id, eng, cfg):
+        from notas.repositorio import concluir_importacao
+        with __import__("sqlalchemy.orm", fromlist=["Session"]).Session(eng) as s:
+            concluir_importacao(s, imp_id, "concluida", {"criadas": 4, "ignoradas": 1})
+        chamadas.append(imp_id)
+
+    sem_cfg = TestClient(criar_app(config_teste, engine, iniciar_backup=lambda *a: None, sincronizar=falso),
+                         base_url=BASE_URL)
+    html = sem_cfg.get("/").text
+    assert re.search(r'<button[^>]*hx-post="/sincronizar"[^>]*>Sincronizar</button>', html)
+    r = sem_cfg.post("/sincronizar")
+    assert r.status_code == 422 and "TELEGRAM_API_ID" in r.text
+    cfg = replace(config_teste, api_id=1, api_hash="h", telegram_sessao=tmp_path / "telegram")
+    cli = TestClient(criar_app(cfg, engine, iniciar_backup=lambda *a: None, sincronizar=falso), base_url=BASE_URL)
+    r = cli.post("/sincronizar")
+    assert r.status_code == 422 and "notas.sincronizacao login" in r.text
+    (tmp_path / "telegram.session").write_bytes(b"x")
+    r = cli.post("/sincronizar")
+    assert r.status_code == 202
+    html = esperar_fim(cli)
+    assert "Sincronização com o Telegram" in html and "criadas: 4" in html and chamadas
+    sessao.add(Importacao(pasta="x", via="terminal", status="rodando"))
+    sessao.commit()
+    assert cli.post("/sincronizar").status_code == 409

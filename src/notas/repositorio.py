@@ -62,8 +62,9 @@ def _gravar_tags(sessao: Session, nota_id: int, texto: str | None) -> None:
         sessao.execute(insert_core(Tag), [{"nota_id": nota_id, "nome": n} for n in nomes])
 
 
-def salvar_ao_vivo(sessao: Session, dados: dict, itens: Iterable[ItemLink] = ()) -> None:
-    stmt = insert(Nota).values(**dados, origem="ao_vivo", criada_em=agora())
+def salvar_ao_vivo(sessao: Session, dados: dict, itens: Iterable[ItemLink] = (), origem: str = "ao_vivo") -> None:
+    """Upsert: captura ao vivo e sincronização (009); edição reescreve ATUALIZAVEIS."""
+    stmt = insert(Nota).values(**dados, origem=origem, criada_em=agora())
     stmt = stmt.on_conflict_do_update(
         index_elements=["chat_id", "message_id"],
         set_={c: stmt.excluded[c] for c in ATUALIZAVEIS},

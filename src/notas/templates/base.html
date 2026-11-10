@@ -15,6 +15,9 @@
 <header class="topo">
   <a class="marca" href="/">Notas</a>
   {% block busca %}{% endblock %}
+  {%- if request.url.path == '/' %}
+  <button type="button" class="sincronizar" hx-post="/sincronizar" hx-target="#status" hx-swap="innerHTML">Sincronizar</button>
+  {%- endif %}
   <nav class="menu" aria-label="Páginas"><a href="/importar"{% if request.url.path == '/importar' %} aria-current="page"{% endif %}>Importar</a></nav>
 </header>
 {% block conteudo %}{% endblock %}

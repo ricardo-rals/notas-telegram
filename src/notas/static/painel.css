@@ -101,6 +101,14 @@ code, kbd { font: .85em ui-monospace, "Cascadia Code", monospace; }
 }
 .periodo-atalhos { margin-bottom: 1rem; }
 .periodo-atalhos a { font-size: .8rem; padding: .2rem .65rem; }
+button.sincronizar { flex: none; background: var(--acento-fundo); color: var(--acento); border-color: color-mix(in srgb, var(--acento) 40%, transparent); }
+button.sincronizar.htmx-request { opacity: .6; cursor: progress; }
+.status-flutuante:has(p) {
+  position: fixed; right: 1.25rem; bottom: 1.25rem; z-index: 20; max-width: 380px; padding: .75rem 1rem;
+  background: var(--superficie-2); border: 1px solid var(--borda-forte); border-radius: var(--raio);
+  box-shadow: var(--sombra); font-size: .88rem; animation: surgir var(--t) both;
+}
+.status-flutuante p { margin: .2rem 0; }
 .menu { margin-left: auto; display: flex; gap: 1rem; }
 .menu a { color: var(--fraco); text-decoration: none; font-size: .9rem; transition: color var(--t); }
 .menu a:hover, .menu a[aria-current] { color: var(--texto); }
@@ -269,6 +277,7 @@ form.importar input {
   .topo { gap: .75rem; padding: 0 1rem; }
   .marca { width: auto; }
   .busca kbd, .busca .periodo { display: none; }
+  button.sincronizar { padding: 0 .6rem; }
   .concha { display: block; }
   .lateral {
     position: sticky; top: 60px; z-index: 5; height: auto; flex-direction: row; overflow-x: auto; gap: .375rem;
