@@ -52,8 +52,8 @@
   <p class="aviso">Backup atrasado: o painel faz uma cópia por dia enquanto está aberto.</p>
   {%- endif %}
   {%- if backup.erro %}<p class="erro">Último erro de backup: {{ backup.erro }}</p>{% endif %}
-  <p class="fraco">Pasta: <code>{{ backup.pasta }}</code> · para restaurar, feche o bot e o painel e copie um
-  backup no lugar do arquivo do banco.</p>
+  <p class="fraco">Pasta: <code>{{ backup.pasta }}</code> · para restaurar, feche o bot e o painel e use
+  <code>pg_restore --clean --if-exists</code> (veja o README).</p>
 </section>
 </main>
 {% endblock %}

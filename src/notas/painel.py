@@ -237,7 +237,7 @@ def criar_app(cfg: Config, engine: Engine, iniciar_previas=iniciar_thread, pasta
     if cfg.previas_links:
         iniciar_previas(engine, cfg.media_dir)
     if cfg.backup_dir:
-        iniciar_backup(cfg.database_path, cfg.backup_dir, cfg.backup_manter)
+        iniciar_backup(cfg.database_url, cfg.backup_dir, cfg.backup_manter, cfg.pg_bin)
 
     app.mount("/static", StaticFiles(directory=AQUI / "static"), name="static")
     app.mount("/media", StaticFiles(directory=cfg.media_dir, check_dir=False), name="media")
@@ -251,7 +251,7 @@ def main() -> None:
         cfg = carregar()
     except ErroConfig as e:
         raise SystemExit(f"Configuração inválida: {e}") from None
-    engine = criar_engine(cfg.database_path)
+    engine = criar_engine(cfg.database_url)
     exigir_revisao_atual(engine)
     cfg.media_dir.mkdir(parents=True, exist_ok=True)
     print(f"Painel em http://{HOST}:{cfg.painel_port}")

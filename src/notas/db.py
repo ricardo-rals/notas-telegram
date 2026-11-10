@@ -1,13 +1,13 @@
-"""Engine SQLite, modelos e verificação de migração. O esquema real vem de alembic/versions."""
+"""Engine PostgreSQL, modelos e verificação de migração. O esquema real vem de alembic/versions."""
 
 from datetime import UTC, datetime
-from pathlib import Path
 
 from alembic import command
 from alembic.config import Config as AlembicConfig
 from alembic.runtime.migration import MigrationContext
 from alembic.script import ScriptDirectory
-from sqlalchemy import Engine, ForeignKey, Integer, String, create_engine, event
+from sqlalchemy import BigInteger, Engine, ForeignKey, Integer, String, create_engine
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 from notas.config import RAIZ_REPO
@@ -28,8 +28,8 @@ class Nota(Base):
     __tablename__ = "nota"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    chat_id: Mapped[int]
-    message_id: Mapped[int]
+    chat_id: Mapped[int] = mapped_column(BigInteger)
+    message_id: Mapped[int] = mapped_column(BigInteger)
     enviada_em: Mapped[str]
     editada_em: Mapped[str | None]
     tipo: Mapped[str]
@@ -37,7 +37,7 @@ class Nota(Base):
     link: Mapped[str]
     arquivo_caminho: Mapped[str | None]
     arquivo_nome: Mapped[str | None]
-    arquivo_tamanho: Mapped[int | None]
+    arquivo_tamanho: Mapped[int | None] = mapped_column(BigInteger)
     situacao: Mapped[str]
     erro: Mapped[str | None]
     origem: Mapped[str]
@@ -102,37 +102,31 @@ class Importacao(Base):
     erro: Mapped[str | None]
 
 
-def criar_engine(caminho: Path) -> Engine:
-    caminho.parent.mkdir(parents=True, exist_ok=True)
-    engine = create_engine(f"sqlite:///{caminho}")
-
-    @event.listens_for(engine, "connect")
-    def _pragmas(conn, _):
-        cur = conn.cursor()
-        cur.execute("PRAGMA journal_mode=WAL")
-        cur.execute("PRAGMA busy_timeout=5000")
-        cur.execute("PRAGMA foreign_keys=ON")
-        cur.close()
-
-    return engine
+def criar_engine(url: str) -> Engine:
+    """PostgreSQL local (constituição 2.0.0). `pool_pre_ping` refaz conexões caídas."""
+    return create_engine(url, pool_pre_ping=True, connect_args={"connect_timeout": 5})
 
 
-def _alembic(caminho: Path) -> AlembicConfig:
+def _alembic(url: str) -> AlembicConfig:
     cfg = AlembicConfig(str(RAIZ_REPO / "alembic.ini"))
     cfg.set_main_option("script_location", str(RAIZ_REPO / "alembic"))
-    cfg.set_main_option("sqlalchemy.url", f"sqlite:///{caminho}")
+    cfg.attributes["url"] = url  # fora de set_main_option: o ConfigParser interpretaria "%" da senha
     return cfg
 
 
-def migrar(caminho: Path) -> None:
-    caminho.parent.mkdir(parents=True, exist_ok=True)
-    command.upgrade(_alembic(caminho), "head")
+def migrar(url: str) -> None:
+    command.upgrade(_alembic(url), "head")
 
 
 def exigir_revisao_atual(engine: Engine) -> None:
-    head = ScriptDirectory.from_config(_alembic(Path(engine.url.database))).get_current_head()
-    with engine.connect() as conn:
-        atual = MigrationContext.configure(conn).get_current_revision()
+    head = ScriptDirectory.from_config(_alembic(engine.url.render_as_string(hide_password=False))).get_current_head()
+    try:
+        with engine.connect() as conn:
+            atual = MigrationContext.configure(conn).get_current_revision()
+    except OperationalError:
+        u = engine.url
+        raise SystemExit(f"Não consegui conectar ao PostgreSQL em {u.host}:{u.port or 5432} (banco {u.database}). "
+                         "Ele está ligado? Confira DATABASE_URL no .env.") from None
     if atual != head:
         raise SystemExit(
             f"Banco desatualizado (revisão {atual}, esperado {head}). "

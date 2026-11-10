@@ -1,9 +1,13 @@
 """Configuração lida de variáveis de ambiente (o .env é carregado por `uv run --env-file .env`)."""
 
 import os
+import shutil
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
+
+from sqlalchemy.engine import make_url
+from sqlalchemy.exc import ArgumentError
 
 RAIZ_REPO = Path(__file__).resolve().parents[2]
 
@@ -16,13 +20,42 @@ class ErroConfig(ValueError):
 class Config:
     chat_id: int
     user_id: int
-    database_path: Path
+    database_url: str
     media_dir: Path
     painel_port: int
     token: str | None = None
     previas_links: bool = True  # busca título/miniatura dos links (Princípio I, item b)
     backup_dir: Path | None = None  # None = "backups" ao lado do banco (006)
     backup_manter: int = 7
+    pg_bin: Path | None = None  # pasta com pg_dump/pg_restore (backup)
+    sqlite_antigo: Path | None = None  # SQLite das fatias 001–006, só para migrar_sqlite
+
+
+HOSTS_LOCAIS = {"127.0.0.1", "localhost", "::1"}
+
+
+def validar_url(url: str, nome: str) -> str:
+    """PostgreSQL só no próprio computador (Princípio IV). A senha nunca vai na mensagem de erro."""
+    try:
+        u = make_url(url)
+    except ArgumentError:
+        raise ErroConfig(f"{nome} inválida (esperado postgresql+psycopg://usuario:senha@127.0.0.1:5432/banco)") from None
+    if not u.drivername.startswith("postgresql"):
+        raise ErroConfig(f"{nome} precisa ser PostgreSQL (postgresql+psycopg://...)")
+    if u.host not in HOSTS_LOCAIS:
+        raise ErroConfig(f"{nome} precisa apontar para 127.0.0.1 ou localhost (Princípio IV)")
+    if not u.database:
+        raise ErroConfig(f"{nome} precisa ter o nome do banco")
+    return url
+
+
+def achar_pg_bin(env: Mapping[str, str] = os.environ) -> Path | None:
+    if env.get("PG_BIN"):
+        return Path(env["PG_BIN"])
+    if exe := shutil.which("pg_dump"):
+        return Path(exe).parent
+    candidatas = sorted(Path(r"C:\Program Files\PostgreSQL").glob("*/bin/pg_dump.exe"), reverse=True)
+    return candidatas[0].parent if candidatas else None
 
 
 def _dentro(caminho: Path, pasta: Path) -> bool:
@@ -49,14 +82,13 @@ def carregar(exigir_token: bool = False, env: Mapping[str, str] = os.environ) ->
     if exigir_token and token is None:
         raise ErroConfig("variável obrigatória ausente: TELEGRAM_BOT_TOKEN")
 
-    db = valor("DATABASE_PATH")
-    if db:
-        database_path = Path(db)
-    else:
-        base = valor("LOCALAPPDATA")
-        database_path = (Path(base) if base else Path.home() / ".local" / "share") / "notas-telegram" / "notas.db"
-    if _dentro(database_path, RAIZ_REPO):
-        raise ErroConfig("DATABASE_PATH precisa ficar fora do repositório (Princípio IV)")
+    url = valor("DATABASE_URL")
+    if url is None:
+        raise ErroConfig("variável obrigatória ausente: DATABASE_URL")
+    database_url = validar_url(url, "DATABASE_URL")
+    base = valor("LOCALAPPDATA")
+    dados = (Path(base) if base else Path.home() / ".local" / "share") / "notas-telegram"
+    sqlite_antigo = Path(valor("DATABASE_PATH") or dados / "notas.db")
 
     media_dir = Path(valor("MEDIA_DIR") or "data/media")
     if not media_dir.is_absolute():
@@ -68,7 +100,7 @@ def carregar(exigir_token: bool = False, env: Mapping[str, str] = os.environ) ->
     if previas not in ("0", "1"):
         raise ErroConfig("PREVIAS_LINKS precisa ser 0 ou 1")
 
-    backup_dir = Path(valor("BACKUP_DIR") or database_path.parent / "backups")
+    backup_dir = Path(valor("BACKUP_DIR") or dados / "backups")
     if _dentro(backup_dir, RAIZ_REPO):
         raise ErroConfig("BACKUP_DIR precisa ficar fora do repositório (Princípio IV)")
     backup_manter = inteiro("BACKUP_MANTER", 7)
@@ -78,11 +110,13 @@ def carregar(exigir_token: bool = False, env: Mapping[str, str] = os.environ) ->
     return Config(
         chat_id=inteiro("ALLOWED_CHAT_ID"),
         user_id=inteiro("ALLOWED_USER_ID"),
-        database_path=database_path,
+        database_url=database_url,
         media_dir=media_dir,
         painel_port=inteiro("PAINEL_PORT", 8000),
         token=token,
         previas_links=previas == "1",
         backup_dir=backup_dir,
         backup_manter=backup_manter,
+        pg_bin=achar_pg_bin(env),
+        sqlite_antigo=sqlite_antigo,
     )

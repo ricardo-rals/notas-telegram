@@ -1,22 +1,26 @@
 """Backup diário do banco (006): `uv run --env-file .env python -m notas.backup` faz um na hora.
 
-No painel, uma thread verifica na partida e a cada hora; o banco é copiado com `VACUUM INTO`,
-que gera um arquivo SQLite consistente mesmo com o bot gravando ao mesmo tempo.
+No painel, uma thread verifica na partida e a cada hora; o banco é copiado com `pg_dump -Fc`
+(007), que gera uma cópia consistente mesmo com o bot gravando. Restaurar:
+`pg_restore --clean --if-exists -d <banco> notas-AAAAMMDD-HHMMSS.dump`.
 """
 
 import logging
 import re
-import sqlite3
+import os
+import subprocess
 import sys
 import threading
 from datetime import datetime, timedelta
 from pathlib import Path
 
+from sqlalchemy.engine import make_url
+
 from notas.config import ErroConfig, carregar
 
 log = logging.getLogger("notas.backup")
 
-NOME = re.compile(r"^notas-(\d{8}-\d{6})\.db$")
+NOME = re.compile(r"^notas-(\d{8}-\d{6})\.dump$")
 INTERVALO = timedelta(hours=24)
 VERIFICAR_A_CADA = 3600  # segundos
 ULTIMO_ERRO: dict[str, str | None] = {"mensagem": None}  # mostrado em /importar (Princípio VIII)
@@ -43,26 +47,43 @@ def precisa_backup(pasta: Path, agora: datetime) -> bool:
     return not recentes or agora - recentes[0] >= INTERVALO
 
 
-def fazer_backup(banco: Path, pasta: Path, manter: int, agora: datetime | None = None) -> Path:
+def _pg(programa: str, pg_bin: Path | None) -> str:
+    exe = (pg_bin / f"{programa}.exe") if pg_bin and (pg_bin / f"{programa}.exe").exists() else (
+        pg_bin / programa if pg_bin else Path(programa))
+    return str(exe)
+
+
+def conexao_pg(url: str) -> tuple[list[str], dict]:
+    """Argumentos de conexão e ambiente para pg_dump/pg_restore; a senha vai em PGPASSWORD,
+    nunca na linha de comando (FR-004 da 007)."""
+    u = make_url(url)
+    args = ["-h", u.host or "127.0.0.1", "-p", str(u.port or 5432), "-U", u.username or "postgres"]
+    return args, {**os.environ, "PGPASSWORD": u.password or ""}
+
+
+def fazer_backup(url: str, pasta: Path, manter: int, agora: datetime | None = None,
+                 pg_bin: Path | None = None) -> Path:
     pasta.mkdir(parents=True, exist_ok=True)
-    destino = pasta / f"notas-{(agora or datetime.now()):%Y%m%d-%H%M%S}.db"
-    con = sqlite3.connect(banco)
-    try:
-        con.execute("VACUUM INTO ?", (str(destino),))
-    finally:
-        con.close()
+    destino = pasta / f"notas-{(agora or datetime.now()):%Y%m%d-%H%M%S}.dump"
+    args, env = conexao_pg(url)
+    r = subprocess.run([_pg("pg_dump", pg_bin), *args, "-Fc", "-f", str(destino), make_url(url).database],
+                       env=env, capture_output=True, text=True)
+    if r.returncode != 0:
+        destino.unlink(missing_ok=True)
+        raise RuntimeError(f"pg_dump falhou: {r.stderr.strip()[:300]}")
     for _, velho in _backups(pasta)[manter:]:
         velho.unlink(missing_ok=True)
     return destino
 
 
-def verificar(banco: Path, pasta: Path, manter: int, agora: datetime | None = None) -> Path | None:
+def verificar(banco: str, pasta: Path, manter: int, agora: datetime | None = None,
+              pg_bin: Path | None = None) -> Path | None:
     """Faz o backup se precisar. Nunca levanta: o erro vai para o log e para ULTIMO_ERRO."""
     agora = agora or datetime.now()
     try:
         if not precisa_backup(pasta, agora):
             return None
-        destino = fazer_backup(banco, pasta, manter, agora)
+        destino = fazer_backup(banco, pasta, manter, agora, pg_bin)
         ULTIMO_ERRO["mensagem"] = None
         log.info("backup feito: %s", destino.name)
         return destino
@@ -72,12 +93,12 @@ def verificar(banco: Path, pasta: Path, manter: int, agora: datetime | None = No
         return None
 
 
-def iniciar_thread(banco: Path, pasta: Path, manter: int) -> threading.Event:
+def iniciar_thread(banco: str, pasta: Path, manter: int, pg_bin: Path | None = None) -> threading.Event:
     parar = threading.Event()
 
     def laco():
         while not parar.is_set():
-            verificar(banco, pasta, manter)
+            verificar(banco, pasta, manter, pg_bin=pg_bin)
             parar.wait(VERIFICAR_A_CADA)
 
     threading.Thread(target=laco, name="backup", daemon=True).start()
@@ -90,7 +111,7 @@ def main() -> None:
     except ErroConfig as e:
         raise SystemExit(f"Configuração inválida: {e}") from None
     try:
-        destino = fazer_backup(cfg.database_path, cfg.backup_dir, cfg.backup_manter)
+        destino = fazer_backup(cfg.database_url, cfg.backup_dir, cfg.backup_manter, pg_bin=cfg.pg_bin)
     except Exception as e:
         print(f"Backup falhou: {type(e).__name__}: {e}", file=sys.stderr)
         sys.exit(1)

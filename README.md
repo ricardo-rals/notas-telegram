@@ -1,7 +1,7 @@
 # Notas
 
 Caderno local a partir de um grupo privado do Telegram. Tudo que você manda no grupo vira uma
-nota num SQLite no seu computador, com busca num painel em `http://127.0.0.1:8000`.
+nota num banco PostgreSQL no seu computador, com busca num painel em `http://127.0.0.1:8000`.
 Sem LLM, sem API paga; a rede só é usada para falar com o Telegram e, se ligado, para buscar a
 prévia dos links.
 
@@ -15,7 +15,7 @@ prévia dos links.
 
 ```powershell
 uv sync
-Copy-Item .env.example .env        # preencha TELEGRAM_BOT_TOKEN, ALLOWED_CHAT_ID, ALLOWED_USER_ID
+Copy-Item .env.example .env        # preencha TELEGRAM_BOT_TOKEN, ALLOWED_CHAT_ID, ALLOWED_USER_ID e DATABASE_URL
 uv run --env-file .env alembic upgrade head
 uv run --env-file .env python -m notas.bot      # terminal 1
 uv run --env-file .env python -m notas.painel   # terminal 2
@@ -84,22 +84,34 @@ uv run python -m notas.servico desinstalar   # remove
 
 ## Backup
 
-Com o painel aberto, o banco é copiado uma vez por dia para `backups` (ao lado do banco, fora do
-repositório), guardando os 7 mais recentes (`BACKUP_DIR`, `BACKUP_MANTER`). A página **Importar**
+Com o painel aberto, o banco é copiado uma vez por dia com `pg_dump` para
+`%LOCALAPPDATA%
+otas-telegramackups` (fora do repositório), guardando os 7 mais recentes (`BACKUP_DIR`, `BACKUP_MANTER`). A página **Importar**
 mostra o último backup e avisa se estiver atrasado. Backup na hora:
 
 ```powershell
 uv run --env-file .env python -m notas.backup
 ```
 
-Para restaurar: feche o bot e o painel e copie um `notas-AAAAMMDD-HHMMSS.db` no lugar de `notas.db`.
+Para restaurar: feche o bot e o painel e rode
+`pg_restore --clean --if-exists -h 127.0.0.1 -U postgres -d telegram notas-AAAAMMDD-HHMMSS.dump`.
 A pasta `data/media` não entra no backup diário.
+
+## PostgreSQL
+
+Os dados ficam num PostgreSQL local (`DATABASE_URL` no `.env`, sempre `127.0.0.1`). Para trazer
+as notas do SQLite das versões anteriores, uma vez, com o banco novo vazio:
+
+```powershell
+uv run --env-file .env alembic upgrade head
+uv run --env-file .env python -m notas.migrar_sqlite    # o SQLite fica intacto
+```
 
 ## Testes
 
 ```powershell
-uv run pytest            # tudo
-uv run pytest -m "not lento"
+uv run --env-file .env pytest            # tudo (usa TEST_DATABASE_URL, banco terminado em _test)
+uv run --env-file .env pytest -m "not lento"
 ```
 
 Roteiros de validação: [001](specs/001-captura-notas/quickstart.md) e [002](specs/002-categorias-sites/quickstart.md) e

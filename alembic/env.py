@@ -1,20 +1,16 @@
-from pathlib import Path
-
 from alembic import context
 
 from notas.db import criar_engine
 
-url = context.config.get_main_option("sqlalchemy.url")
-if url:
-    caminho = Path(url.removeprefix("sqlite:///"))
-else:
+url = context.config.attributes.get("url")
+if not url:  # `alembic upgrade head` no terminal: usa o .env
     from notas.config import carregar
 
-    caminho = carregar().database_path
+    url = carregar().database_url
 
-engine = criar_engine(caminho)
+engine = criar_engine(url)
 with engine.connect() as conn:
-    context.configure(connection=conn, render_as_batch=True)
+    context.configure(connection=conn)
     with context.begin_transaction():
         context.run_migrations()
 engine.dispose()

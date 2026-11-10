@@ -1,11 +1,12 @@
 """Acesso a dados. Cada função grava e faz commit da própria unidade de trabalho."""
 
 import json
+import re
 from collections.abc import Iterable
 from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import Connection, Integer, column, delete, false, func, insert as insert_core, not_, or_, select, text, update
-from sqlalchemy.dialects.sqlite import insert
+from sqlalchemy import Connection, delete, false, func, insert as insert_core, literal_column, not_, or_, select, update
+from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -93,16 +94,18 @@ def registrar_falha(
 POR_PAGINA = 50
 
 
+PALAVRA = re.compile(r"\w+")
+
+
 def consulta_fts(q: str) -> str | None:
-    """Cada palavra vira um token entre aspas (E lógico); a sintaxe do FTS5 nunca chega crua."""
-    palavras = [p for p in q.split() if any(ch.isalnum() for ch in p)]
-    return " ".join('"' + p.replace('"', '""') + '"' for p in palavras) or None
+    """Cada palavra vira `palavra:*` (prefixo) e todas são exigidas (E lógico). Só caracteres de
+    palavra chegam ao `to_tsquery`, então a sintaxe do PostgreSQL nunca chega crua."""
+    palavras = PALAVRA.findall(q)
+    return " & ".join(f"{p}:*" for p in palavras) or None
 
 
-def _ids_fts(tabela: str, fts: str):
-    return text(f"SELECT rowid FROM {tabela} WHERE {tabela} MATCH :fts").bindparams(fts=fts).columns(
-        column("rowid", Integer)
-    )
+def _casa(coluna, fts: str):
+    return coluna.op("@@")(func.to_tsquery(literal_column("'notas'::regconfig"), fts))
 
 
 def _com_tag(tag: str):
@@ -132,7 +135,7 @@ def buscar(
         fts = consulta_fts(q)
         if fts is None:
             return [], 0
-        filtro = filtro.where(Nota.id.in_(_ids_fts("nota_fts", fts)))
+        filtro = filtro.where(_casa(literal_column("nota.busca"), fts))
     if tipo == "falha":
         filtro = filtro.where(Nota.situacao == "falha")
     elif tipo:
@@ -210,10 +213,9 @@ def buscar_links(
         fts = consulta_fts(q)
         if fts is None:
             return [], 0
-        urls_previa = select(Previa.url).where(text("previa.rowid IN (SELECT rowid FROM previa_fts WHERE previa_fts MATCH :fp)"))
         filtro = filtro.where(
-            Nota.id.in_(_ids_fts("nota_fts", fts)) | Link.url.in_(urls_previa)
-        ).params(fp=fts)
+            _casa(literal_column("nota.busca"), fts) | _casa(literal_column("previa.busca"), fts)
+        )
     total = sessao.scalar(select(func.count()).select_from(filtro.subquery()))
     linhas = sessao.execute(
         filtro.order_by(Link.data.desc(), Link.nota_id.desc(), Link.posicao)

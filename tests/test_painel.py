@@ -566,13 +566,13 @@ def test_importar_mostra_estado_do_backup(cliente, config_teste):
     assert "Nenhum backup ainda" in cliente.get("/importar").text
     config_teste.backup_dir.mkdir(parents=True)
     recente = datetime.now() - timedelta(hours=2)
-    (config_teste.backup_dir / f"notas-{recente:%Y%m%d-%H%M%S}.db").write_bytes(b"x")
+    (config_teste.backup_dir / f"notas-{recente:%Y%m%d-%H%M%S}.dump").write_bytes(b"x")
     html = cliente.get("/importar").text
     assert f"Último backup: {recente:%d/%m/%Y %H:%M}" in html and "atrasado" not in html
     for p in config_teste.backup_dir.iterdir():
         p.unlink()
     velho = datetime.now() - timedelta(hours=50)
-    (config_teste.backup_dir / f"notas-{velho:%Y%m%d-%H%M%S}.db").write_bytes(b"x")
+    (config_teste.backup_dir / f"notas-{velho:%Y%m%d-%H%M%S}.dump").write_bytes(b"x")
     assert "Backup atrasado" in cliente.get("/importar").text
     backup.ULTIMO_ERRO["mensagem"] = "PermissionError: negado"
     try:

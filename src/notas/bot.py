@@ -81,7 +81,7 @@ def main() -> None:
         raise SystemExit(f"Configuração inválida: {e}") from None
     if not str(cfg.chat_id).startswith("-100"):
         raise SystemExit("ALLOWED_CHAT_ID precisa ser de um supergrupo (começa com -100).")
-    engine = criar_engine(cfg.database_path)
+    engine = criar_engine(cfg.database_url)
     exigir_revisao_atual(engine)
     cfg.media_dir.mkdir(parents=True, exist_ok=True)
 

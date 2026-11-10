@@ -182,7 +182,7 @@ def main() -> None:
         cfg = carregar()
     except ErroConfig as e:
         raise SystemExit(f"Configuração inválida: {e}") from None
-    engine = criar_engine(cfg.database_path)
+    engine = criar_engine(cfg.database_url)
     exigir_revisao_atual(engine)
     with Session(engine) as sessao:
         try:

@@ -31,3 +31,8 @@ ChatExport_*/
 
 # Cache de catálogo do Spec Kit
 .specify/extensions/.cache/
+
+# Backups do PostgreSQL e sessão do Telegram (Princípio IV)
+*.dump
+*.session
+*.session-journal
